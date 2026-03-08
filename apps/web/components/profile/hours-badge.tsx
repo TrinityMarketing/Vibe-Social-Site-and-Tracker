@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export function HoursBadge({ hours }: { hours: number }) {
+export function HoursBadge({ hours, suffix = "hours" }: { hours: number; suffix?: string }) {
   const [displayHours, setDisplayHours] = useState(0);
 
   useEffect(() => {
@@ -30,7 +30,7 @@ export function HoursBadge({ hours }: { hours: number }) {
         <div className="absolute inset-0 animate-pulse rounded-full bg-neon/10" />
         <div className="text-center">
           <p className="font-mono text-4xl font-bold text-neon">{displayHours}</p>
-          <p className="text-sm text-muted-foreground">hours</p>
+          <p className="text-sm text-muted-foreground">{suffix}</p>
         </div>
       </div>
       <p className="mt-2 text-xs font-medium text-neon">Verified Build Time</p>

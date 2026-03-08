@@ -31,16 +31,17 @@ function createWidget() {
   const { width: screenW, height: screenH } = display.workAreaSize;
 
   widgetWindow = new BrowserWindow({
-    width: 240,
-    height: 120,
-    x: screenW - 260,
-    y: screenH - 140,
+    width: 180,
+    height: 70,
+    x: screenW - 200,
+    y: screenH - 90,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
     hasShadow: false,
+    backgroundColor: "#00000000",
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
       nodeIntegration: false,

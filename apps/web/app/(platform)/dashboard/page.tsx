@@ -69,10 +69,14 @@ export default async function DashboardPage() {
       ),
     ]);
 
-  const todayHours =
-    Math.round(((todayResult._sum.durationSecs || 0) / 3600) * 10) / 10;
-  const weeklyHours =
-    Math.round(((weeklyResult._sum.durationSecs || 0) / 3600) * 10) / 10;
+  const todaySecs = todayResult._sum.durationSecs || 0;
+  const weeklySecs = weeklyResult._sum.durationSecs || 0;
+  const todayDisplay = todaySecs >= 3600
+    ? { value: Math.round((todaySecs / 3600) * 10) / 10, suffix: "hrs" }
+    : { value: Math.round(todaySecs / 60), suffix: "min" };
+  const weeklyDisplay = weeklySecs >= 3600
+    ? { value: Math.round((weeklySecs / 3600) * 10) / 10, suffix: "hrs" }
+    : { value: Math.round(weeklySecs / 60), suffix: "min" };
   const topApp = topAppResult[0]?.appName || "—";
 
   // Streak
@@ -120,8 +124,8 @@ export default async function DashboardPage() {
 
       {/* Stats Row */}
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Today" value={todayHours} suffix="hrs" />
-        <StatCard label="This Week" value={weeklyHours} suffix="hrs" />
+        <StatCard label="Today" value={todayDisplay.value} suffix={todayDisplay.suffix} />
+        <StatCard label="This Week" value={weeklyDisplay.value} suffix={weeklyDisplay.suffix} />
         <StatCard label="Streak" value={streak} suffix="days" />
         <div className="rounded-lg border border-border bg-card p-6">
           <p className="text-sm text-muted-foreground">Top App</p>

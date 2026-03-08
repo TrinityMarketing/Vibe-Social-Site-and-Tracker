@@ -51,18 +51,41 @@ export async function POST(req: Request) {
           continue;
         }
 
-        await prisma.session.create({
-          data: {
+        // Upsert: if a session with the same startTime + app already exists for this user,
+        // update its duration instead of creating a duplicate.
+        // This handles active sessions that sync repeatedly before closing.
+        const existing = await prisma.session.findFirst({
+          where: {
             userId: user.id,
             appName: session.appName,
-            windowTitle: session.windowTitle || null,
             startTime,
-            endTime,
-            durationSecs: session.durationSecs,
-            isActive: false,
-            date: new Date(startTime.toISOString().split("T")[0]),
           },
         });
+
+        if (existing) {
+          await prisma.session.update({
+            where: { id: existing.id },
+            data: {
+              durationSecs: session.durationSecs,
+              endTime,
+              windowTitle: session.windowTitle || existing.windowTitle,
+              isActive: !endTime,
+            },
+          });
+        } else {
+          await prisma.session.create({
+            data: {
+              userId: user.id,
+              appName: session.appName,
+              windowTitle: session.windowTitle || null,
+              startTime,
+              endTime,
+              durationSecs: session.durationSecs,
+              isActive: !endTime,
+              date: new Date(startTime.toISOString().split("T")[0]),
+            },
+          });
+        }
 
         synced++;
       } catch (err) {

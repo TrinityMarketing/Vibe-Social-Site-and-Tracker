@@ -58,11 +58,11 @@ export function Widget() {
       style={{
         width: "100%",
         height: "100%",
-        borderRadius: 16,
+        borderRadius: 12,
         background: "rgba(10, 10, 10, 0.92)",
         border: `1px solid ${tracking ? "rgba(0, 255, 136, 0.2)" : "rgba(255,255,255,0.06)"}`,
         backdropFilter: "blur(20px)",
-        padding: "14px 18px",
+        padding: "8px 12px",
         cursor: "move",
         userSelect: "none",
         // @ts-ignore
@@ -74,24 +74,25 @@ export function Widget() {
         transition: "border-color 0.3s",
       }}
     >
-      {/* Timer */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      {/* Timer row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <div
           style={{
-            width: 8,
-            height: 8,
+            width: 6,
+            height: 6,
             borderRadius: "50%",
             background: tracking ? "#00ff88" : "#444",
-            boxShadow: tracking ? "0 0 10px #00ff88, 0 0 20px #00ff8844" : "none",
+            boxShadow: tracking ? "0 0 8px #00ff88" : "none",
             transition: "all 0.3s",
+            flexShrink: 0,
           }}
         />
         <span
           style={{
-            fontSize: 32,
+            fontSize: 22,
             fontWeight: 700,
             color: tracking ? "#00ff88" : "#666",
-            letterSpacing: "-1px",
+            letterSpacing: "-0.5px",
             lineHeight: 1,
             transition: "color 0.3s",
           }}
@@ -103,8 +104,8 @@ export function Widget() {
       {/* Current app */}
       <div
         style={{
-          marginTop: 6,
-          fontSize: 11,
+          marginTop: 3,
+          fontSize: 10,
           color: tracking ? "#a3a3a3" : "#555",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -116,7 +117,7 @@ export function Widget() {
             <span style={{ color: "#00ff88" }}>●</span> {currentApp}
           </>
         ) : (
-          "Waiting for activity..."
+          "idle"
         )}
       </div>
     </div>

@@ -76,13 +76,22 @@ export default async function PublicProfilePage({ params }: Props) {
     }),
   ]);
 
-  const totalHours =
-    Math.round(((totalResult._sum.durationSecs || 0) / 3600) * 10) / 10;
+  const totalSecs = totalResult._sum.durationSecs || 0;
+  const totalHours = totalSecs >= 3600
+    ? Math.round((totalSecs / 3600) * 10) / 10
+    : Math.round(totalSecs / 60);
+  const totalSuffix = totalSecs >= 3600 ? "hours" : "min";
 
-  const appData = topApps.map((a) => ({
-    appName: a.appName,
-    totalHours: Math.round(((a._sum.durationSecs || 0) / 3600) * 10) / 10,
-  }));
+  const appData = topApps.map((a) => {
+    const secs = a._sum.durationSecs || 0;
+    return {
+      appName: a.appName,
+      totalHours: secs >= 3600
+        ? Math.round((secs / 3600) * 10) / 10
+        : Math.round(secs / 60),
+      suffix: secs >= 3600 ? "hrs" : "min",
+    };
+  });
 
   // Streak
   let streak = 0;
@@ -122,7 +131,7 @@ export default async function PublicProfilePage({ params }: Props) {
               twitterUrl={user.twitterUrl}
               websiteUrl={user.websiteUrl}
             />
-            <HoursBadge hours={totalHours} />
+            <HoursBadge hours={totalHours} suffix={totalSuffix} />
           </div>
 
           <div className="mt-6 flex gap-6 text-center">

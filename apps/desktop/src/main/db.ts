@@ -71,12 +71,14 @@ export function startSession(
     "INSERT INTO sessions (appName, windowTitle, startTime) VALUES (?, ?, ?)",
     [appName, windowTitle, now]
   );
-  saveDb();
 
+  // Get ID before saveDb() — db.export() resets last_insert_rowid() in sql.js
   const result = getDb().exec(
     "SELECT last_insert_rowid() as id"
   );
   const id = result[0].values[0][0] as number;
+
+  saveDb();
 
   return {
     id,
@@ -104,8 +106,9 @@ export function closeSession(id: number) {
 }
 
 export function getUnsyncedSessions(): LocalSession[] {
+  // Sync both closed sessions AND active sessions with accumulated time
   const result = getDb().exec(
-    "SELECT id, appName, windowTitle, startTime, endTime, durationSecs, synced FROM sessions WHERE synced = 0 AND endTime IS NOT NULL"
+    "SELECT id, appName, windowTitle, startTime, endTime, durationSecs, synced FROM sessions WHERE synced = 0 AND durationSecs > 0"
   );
   if (!result.length) return [];
 
