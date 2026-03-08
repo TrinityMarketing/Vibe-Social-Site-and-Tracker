@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  clerkId     String   @unique
+  username    String   @unique
+  displayName String
+  bio         String?
+  avatarUrl   String?
+  githubUrl   String?
+  twitterUrl  String?
+  websiteUrl  String?
+  role        String   @default("builder") // builder | engineer | ai_expert
+  apiKey      String   @unique @default(uuid())
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sessions  Session[]
+  follows   Follow[]  @relation("follower")
+  followers Follow[]  @relation("following")
+
+  @@index([username])
+}
+
+model Session {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  appName      String
+  windowTitle  String?
+  startTime    DateTime
+  endTime      DateTime?
+  durationSecs Int       @default(0)
+  isActive     Boolean   @default(false)
+  date         DateTime  @default(now()) @db.Date
+  createdAt    DateTime  @default(now())
+
+  @@index([userId, date])
+  @@index([userId, createdAt])
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  follower    User     @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+}
