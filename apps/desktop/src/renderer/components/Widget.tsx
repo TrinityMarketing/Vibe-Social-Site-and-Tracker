@@ -95,10 +95,29 @@ export function Widget() {
             letterSpacing: "-0.5px",
             lineHeight: 1,
             transition: "color 0.3s",
+            flex: 1,
           }}
         >
           {formatTime(displaySecs)}
         </span>
+        <button
+          onClick={() => window.electronAPI.closeWindow()}
+          style={{
+            background: "transparent",
+            border: "none",
+            color: "#555",
+            fontSize: 14,
+            cursor: "pointer",
+            padding: 0,
+            lineHeight: 1,
+            // @ts-ignore
+            WebkitAppRegion: "no-drag",
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+          onMouseLeave={(e) => (e.currentTarget.style.color = "#555")}
+        >
+          ✕
+        </button>
       </div>
 
       {/* Current app */}

@@ -95,9 +95,31 @@ function createSetupWindow() {
 
 // ── System tray ────────────────────────────────────────────────
 function createTray() {
-  const icon = nativeImage.createFromDataURL(
-    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAALGPC/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3CculE8AAAAhGVYSWZNTQAqAAAACAAFARIAAwAAAAEAAQAAARoABQAAAAEAAABKARsABQAAAAEAAABSASgAAwAAAAEAAgAAh2kABAAAAAEAAABaAAAAAAAA8AAAAAEAAADwAAAAAQADoAEAAwAAAAEAAQAAoAIABAAAAAEAAAAQoAMABAAAAAEAAAAQAAAAAJNkEGUAAAAJcEhZcwAAIdUAACHVAQSctJ0AAAEpSURBVDhPY/hPABMFBhgYAABZhGrBihUrGNasWcPg4ODA8Pv3b4Z///4xHD58mOHv378M69evZ8jIyGDYsGEDw5UrVxi0tLQYNm7cyLBlyxaG////M/z//5/h2bNnDC9fvmR4/fo1w8ePHxmEhYUZ2NjYGLi5uRmYmJgYGBkZGRgAAJYZ/pOSkvIHqP8HMHYD2P9CQ0N/gJwFUsfAwMDI8J8hBKQQ5AKQAaArQJIMIPwfkGRkZPwPNBcsnZGRwbB582aGr1+/Mvz69YsBqA/sUpAXwAaA/P3//3+Gp0+fMrx48YLh7du3DJ8+fWL48eMHw7dv3xi+fPnC8PnzZ4a3b98yvH//nuH9+/cMnz9/Zvj27RvD9+/fGX78+MGgoaHBcOjQIYZFixYxAACVT3k1Tn+Z4AAAAABJRU5ErkJggg=="
-  );
+  // Create a 32x32 tray icon with a green dot (VibeClock brand)
+  const size = 32;
+  const canvas = Buffer.alloc(size * size * 4); // RGBA
+  const cx = size / 2;
+  const cy = size / 2;
+  const radius = 10;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const offset = (y * size + x) * 4;
+      const dist = Math.sqrt((x - cx) ** 2 + (y - cy) ** 2);
+      if (dist <= radius) {
+        // Green circle (#00ff88)
+        const alpha = dist > radius - 1 ? Math.max(0, (radius - dist) * 255) : 255;
+        canvas[offset] = 0;      // R
+        canvas[offset + 1] = 255; // G
+        canvas[offset + 2] = 136; // B
+        canvas[offset + 3] = Math.round(alpha); // A
+      } else {
+        canvas[offset + 3] = 0; // Transparent
+      }
+    }
+  }
+
+  const icon = nativeImage.createFromBuffer(canvas, { width: size, height: size });
 
   tray = new Tray(icon);
   tray.setToolTip("VibeClock");

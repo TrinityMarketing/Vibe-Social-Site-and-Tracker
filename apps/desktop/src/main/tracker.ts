@@ -195,10 +195,8 @@ async function poll() {
     if (isActive && activeAppName) {
       lastTrackedTime = Date.now();
 
-      if (!currentSession || currentSession.appName !== activeAppName) {
-        if (currentSession) {
-          closeSession(currentSession.id);
-        }
+      // Keep one continuous session — only create new if none exists
+      if (!currentSession) {
         const session = startSession(activeAppName, activeWindowTitle);
         currentSession = { id: session.id, appName: activeAppName };
       }
@@ -213,6 +211,7 @@ async function poll() {
     } else {
       notifyRenderer({ active: false });
 
+      // Only close session after sustained idle (120s)
       const idleSecs = (Date.now() - lastTrackedTime) / 1000;
       if (currentSession && idleSecs > IDLE_THRESHOLD_SECS) {
         closeSession(currentSession.id);
