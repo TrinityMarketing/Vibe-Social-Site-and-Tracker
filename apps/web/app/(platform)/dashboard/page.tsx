@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { StatCard } from "@/components/shared/stat-card";
 import { SessionList } from "@/components/dashboard/session-list";
 import { ApiKeyDisplay } from "@/components/dashboard/api-key-display";
+import { AppIcon } from "@/components/shared/app-icon";
 import { DashboardChartWrapper } from "./chart-wrapper";
 
 export default async function DashboardPage() {
@@ -36,13 +37,12 @@ export default async function DashboardPage() {
         orderBy: { startTime: "desc" },
         take: 20,
       }),
-      // Top app
+      // All apps with time
       prisma.session.groupBy({
         by: ["appName"],
         where: { userId: user.id },
         _sum: { durationSecs: true },
         orderBy: { _sum: { durationSecs: "desc" } },
-        take: 1,
       }),
       // Weekly breakdown for chart
       Promise.all(
@@ -78,6 +78,16 @@ export default async function DashboardPage() {
     ? { value: Math.round((weeklySecs / 3600) * 10) / 10, suffix: "hrs" }
     : { value: Math.round(weeklySecs / 60), suffix: "min" };
   const topApp = topAppResult[0]?.appName || "—";
+
+  const appBreakdown = topAppResult.map((a) => {
+    const secs = a._sum.durationSecs || 0;
+    return {
+      appName: a.appName,
+      time: secs >= 3600
+        ? `${Math.round((secs / 3600) * 10) / 10}h`
+        : `${Math.round(secs / 60)}m`,
+    };
+  });
 
   // Streak
   const distinctDates = await prisma.session.findMany({
@@ -157,6 +167,27 @@ export default async function DashboardPage() {
                 Paste this in the tracker when prompted
               </p>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Programs */}
+      {appBreakdown.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-4 font-mono text-lg font-semibold">Programs</h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {appBreakdown.map((app) => (
+              <div
+                key={app.appName}
+                className="flex items-center gap-4 rounded-xl border border-border bg-card p-4"
+              >
+                <AppIcon appName={app.appName} size="lg" />
+                <div>
+                  <p className="font-medium text-foreground">{app.appName}</p>
+                  <p className="font-mono text-xl font-bold text-neon">{app.time}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

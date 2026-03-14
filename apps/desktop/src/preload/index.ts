@@ -10,5 +10,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("tracker:update", (_, data) => callback(data));
   },
   closeWindow: () => ipcRenderer.invoke("close-window"),
+  startResize: (direction: string) => ipcRenderer.invoke("start-resize", direction),
+  stopResize: () => ipcRenderer.invoke("stop-resize"),
   getHash: () => window.location.hash,
 });

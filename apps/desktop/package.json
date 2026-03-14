@@ -11,8 +11,9 @@
   },
   "dependencies": {
     "active-win": "9.0.0",
+    "electron-store": "^8.2.0",
     "sql.js": "^1.11.0",
-    "electron-store": "^8.2.0"
+    "uiohook-napi": "^1.5.4"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",

@@ -40,7 +40,8 @@ function formatDateLabel(iso: string): string {
   });
 }
 
-// Merge consecutive sessions of the same app within 5 minutes of each other
+// Merge consecutive sessions of the same app within 15 minutes of each other
+// and filter out very short sessions (< 30s) to reduce noise
 function mergeSessions(sessions: Session[]): Session[] {
   if (sessions.length === 0) return [];
 
@@ -49,11 +50,10 @@ function mergeSessions(sessions: Session[]): Session[] {
 
   for (let i = 1; i < sessions.length; i++) {
     const s = sessions[i];
-    const currentEnd = new Date(current.startTime).getTime() + current.durationSecs * 1000;
     const gap = (new Date(current.startTime).getTime() - new Date(s.startTime).getTime()) / 1000;
 
-    // Same app and within 5 minutes — merge
-    if (s.appName === current.appName && Math.abs(gap) < 300) {
+    // Same app and within 15 minutes — merge
+    if (s.appName === current.appName && Math.abs(gap) < 900) {
       const earlierStart = new Date(s.startTime) < new Date(current.startTime)
         ? s.startTime : current.startTime;
       current = {
@@ -69,7 +69,7 @@ function mergeSessions(sessions: Session[]): Session[] {
   }
   merged.push(current);
 
-  return merged;
+  return merged.filter((s) => s.durationSecs >= 30);
 }
 
 function groupByDate(sessions: Session[]) {

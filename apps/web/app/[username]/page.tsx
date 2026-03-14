@@ -8,8 +8,11 @@ import { Footer } from "@/components/shared/footer";
 import { ProfileHeader } from "@/components/profile/profile-header";
 import { HoursBadge } from "@/components/profile/hours-badge";
 import { AppBreakdown } from "@/components/profile/app-breakdown";
+import { AppIcon } from "@/components/shared/app-icon";
 import { SessionList } from "@/components/dashboard/session-list";
 import { Separator } from "@/components/ui/separator";
+import { LiveIndicator } from "@/components/profile/live-indicator";
+import { ActivityHeatmap } from "@/components/profile/activity-heatmap";
 
 // Reserved paths that should NOT be caught by the [username] route
 const RESERVED = [
@@ -134,6 +137,10 @@ export default async function PublicProfilePage({ params }: Props) {
             <HoursBadge hours={totalHours} suffix={totalSuffix} />
           </div>
 
+          <div className="mt-4">
+            <LiveIndicator username={user.username} />
+          </div>
+
           <div className="mt-6 flex gap-6 text-center">
             <div>
               <p className="font-mono text-2xl font-bold text-neon">{streak}</p>
@@ -143,6 +150,37 @@ export default async function PublicProfilePage({ params }: Props) {
               <p className="font-mono text-2xl font-bold">{totalHours}</p>
               <p className="text-sm text-muted-foreground">Total Hours</p>
             </div>
+          </div>
+
+          <Separator className="my-8" />
+
+          <div className="mb-8">
+            <h2 className="mb-4 font-mono text-lg font-semibold">Activity</h2>
+            <ActivityHeatmap username={user.username} />
+          </div>
+
+          <Separator className="my-8" />
+
+          {/* Per-app cards showing individual program time */}
+          <h2 className="mb-4 font-mono text-lg font-semibold">Programs</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {appData.map((app) => (
+              <div
+                key={app.appName}
+                className="flex items-center gap-4 rounded-xl border border-border bg-card p-4"
+              >
+                <AppIcon appName={app.appName} size="lg" />
+                <div>
+                  <p className="font-medium text-foreground">{app.appName}</p>
+                  <p className="font-mono text-lg font-bold text-neon">
+                    {app.totalHours}
+                    <span className="ml-1 text-xs font-normal text-muted-foreground">
+                      {app.suffix}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
 
           <Separator className="my-8" />

@@ -28,6 +28,30 @@ export interface UserStats {
   weeklyBreakdown: { day: string; hours: number }[];
 }
 
+// Presence heartbeat from desktop
+export interface PresencePayload {
+  appName: string;
+}
+
+// Presence response from API
+export interface PresenceStatus {
+  isLive: boolean;
+  currentApp: string | null;
+  lastSeenAt: string | null;
+}
+
+// Heatmap day entry
+export interface HeatmapDay {
+  date: string;
+  totalSecs: number;
+  topApp: string | null;
+}
+
+// Heatmap API response
+export interface HeatmapResponse {
+  days: HeatmapDay[];
+}
+
 // User roles
 export type UserRole = "builder" | "engineer" | "ai_expert";
 

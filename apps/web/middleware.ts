@@ -5,7 +5,10 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/sessions/batch",
+  "/api/me/presence",
   "/api/users/(.*)/stats",
+  "/api/users/(.*)/presence",
+  "/api/users/(.*)/heatmap",
   "/api/users/check-username",
   // Public profile pages
   "/:username",

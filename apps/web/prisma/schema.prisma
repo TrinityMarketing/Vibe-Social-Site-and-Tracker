@@ -21,12 +21,16 @@ model User {
   role        String   @default("builder") // builder | engineer | ai_expert
   apiKey      String   @unique @default(uuid())
   isPublic    Boolean  @default(true)
+  lastSeenAt  DateTime?
+  currentApp  String?
+  isLive      Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  sessions  Session[]
-  follows   Follow[]  @relation("follower")
-  followers Follow[]  @relation("following")
+  sessions   Session[]
+  dailyStats DailyStat[]
+  follows    Follow[]  @relation("follower")
+  followers  Follow[]  @relation("following")
 
   @@index([username])
 }
@@ -46,6 +50,21 @@ model Session {
 
   @@index([userId, date])
   @@index([userId, createdAt])
+}
+
+model DailyStat {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date         DateTime @db.Date
+  totalSecs    Int      @default(0)
+  topApp       String?
+  appBreakdown Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, date])
+  @@index([userId, date])
 }
 
 model Follow {

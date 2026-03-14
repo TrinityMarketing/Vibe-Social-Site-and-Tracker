@@ -11,11 +11,13 @@ import path from "path";
 import { initDb, getApiKey, setApiKey, setApiBaseUrl, getTodayStats } from "./db";
 import { startTracking, stopTracking } from "./tracker";
 import { startSyncLoop, stopSyncLoop, syncSessions } from "./sync";
+import { startHeartbeat, stopHeartbeat } from "./heartbeat";
 
 let widgetWindow: BrowserWindow | null = null;
 let setupWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
+let resizeInterval: ReturnType<typeof setInterval> | null = null;
 
 // ── Auto-launch on system startup ──────────────────────────────
 function setupAutoLaunch() {
@@ -32,13 +34,17 @@ function createWidget() {
 
   widgetWindow = new BrowserWindow({
     width: 180,
-    height: 70,
+    height: 85,
     x: screenW - 200,
-    y: screenH - 90,
+    y: screenH - 105,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    resizable: false,
+    resizable: true,
+    minWidth: 140,
+    minHeight: 55,
+    maxWidth: 500,
+    maxHeight: 300,
     skipTaskbar: true,
     hasShadow: false,
     backgroundColor: "#00000000",
@@ -51,8 +57,8 @@ function createWidget() {
 
   widgetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
-  if (process.env.NODE_ENV === "development") {
-    widgetWindow.loadURL("http://localhost:5173/#widget");
+  if (process.env.ELECTRON_RENDERER_URL) {
+    widgetWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}#widget`);
   } else {
     widgetWindow.loadFile(path.join(__dirname, "../renderer/index.html"), {
       hash: "widget",
@@ -80,8 +86,8 @@ function createSetupWindow() {
     },
   });
 
-  if (process.env.NODE_ENV === "development") {
-    setupWindow.loadURL("http://localhost:5173/#setup");
+  if (process.env.ELECTRON_RENDERER_URL) {
+    setupWindow.loadURL(`${process.env.ELECTRON_RENDERER_URL}#setup`);
   } else {
     setupWindow.loadFile(path.join(__dirname, "../renderer/index.html"), {
       hash: "setup",
@@ -162,6 +168,7 @@ function createTray() {
         isQuitting = true;
         stopTracking();
         stopSyncLoop();
+        stopHeartbeat();
         app.quit();
       },
     },
@@ -192,6 +199,7 @@ app.whenReady().then(async () => {
     createWidget();
     startTracking();
     startSyncLoop();
+    startHeartbeat();
   } else {
     // No API key — show setup window
     createSetupWindow();
@@ -208,6 +216,7 @@ app.on("before-quit", () => {
   isQuitting = true;
   stopTracking();
   stopSyncLoop();
+  stopHeartbeat();
 });
 
 // ── IPC handlers ───────────────────────────────────────────────
@@ -229,4 +238,70 @@ ipcMain.handle("force-sync", () => syncSessions());
 ipcMain.handle("close-window", (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   win?.close();
+});
+
+// ── Resize helpers (frameless window corner-drag) ─────────────
+ipcMain.handle("start-resize", (event, direction: string) => {
+  if (resizeInterval) clearInterval(resizeInterval);
+
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return;
+
+  const startCursor = screen.getCursorScreenPoint();
+  const startBounds = win.getBounds();
+  let lastCursor = { ...startCursor };
+  let staleCount = 0;
+
+  resizeInterval = setInterval(() => {
+    const cursor = screen.getCursorScreenPoint();
+
+    // Safety: stop if cursor idle for ~1s (user likely released outside window)
+    if (cursor.x === lastCursor.x && cursor.y === lastCursor.y) {
+      staleCount++;
+      if (staleCount > 60) {
+        clearInterval(resizeInterval!);
+        resizeInterval = null;
+        return;
+      }
+    } else {
+      staleCount = 0;
+      lastCursor = { ...cursor };
+    }
+
+    const dx = cursor.x - startCursor.x;
+    const dy = cursor.y - startCursor.y;
+
+    let { x, y, width, height } = { ...startBounds };
+
+    if (direction.includes("right")) {
+      width = Math.max(140, startBounds.width + dx);
+    }
+    if (direction.includes("bottom")) {
+      height = Math.max(50, startBounds.height + dy);
+    }
+    if (direction.includes("left")) {
+      const newW = Math.max(140, startBounds.width - dx);
+      x = startBounds.x + startBounds.width - newW;
+      width = newW;
+    }
+    if (direction.includes("top")) {
+      const newH = Math.max(50, startBounds.height - dy);
+      y = startBounds.y + startBounds.height - newH;
+      height = newH;
+    }
+
+    win.setBounds({
+      x: Math.round(x),
+      y: Math.round(y),
+      width: Math.round(width),
+      height: Math.round(height),
+    });
+  }, 16); // ~60fps
+});
+
+ipcMain.handle("stop-resize", () => {
+  if (resizeInterval) {
+    clearInterval(resizeInterval);
+    resizeInterval = null;
+  }
 });

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getUserByApiKey } from "@/lib/auth";
+import { updateDailyRollup } from "@/lib/rollup";
 import { NextResponse } from "next/server";
 import type { BatchSyncRequest, BatchSyncResponse } from "@vibeclock/shared";
 
@@ -90,6 +91,22 @@ export async function POST(req: Request) {
         synced++;
       } catch (err) {
         errors.push(`Failed to sync session: ${(err as Error).message}`);
+      }
+    }
+
+    // Update daily rollups for affected dates
+    const datesToRollup = new Set<string>();
+    for (const session of sessions) {
+      if (session.startTime) {
+        const d = new Date(session.startTime).toISOString().split("T")[0];
+        datesToRollup.add(d);
+      }
+    }
+    for (const dateStr of Array.from(datesToRollup)) {
+      try {
+        await updateDailyRollup(user.id, new Date(dateStr));
+      } catch (err) {
+        console.error(`Rollup error for ${dateStr}:`, err);
       }
     }
 

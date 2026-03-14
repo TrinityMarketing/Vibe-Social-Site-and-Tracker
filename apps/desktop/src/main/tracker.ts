@@ -1,6 +1,9 @@
-import { startSession, tickSession, closeSession } from "./db";
-import { BrowserWindow, powerMonitor, screen } from "electron";
+import { startSession, tickSession, closeSession, tickDailyTotal } from "./db";
+import { BrowserWindow, app } from "electron";
 import { execFile } from "child_process";
+import { uIOhook } from "uiohook-napi";
+import fs from "fs";
+import path from "path";
 
 const TRACKED_APPS = [
   "Cursor",
@@ -19,214 +22,230 @@ const TRACKED_APPS = [
   "Ghostty",
 ];
 
-const IDLE_THRESHOLD_SECS = 120;
+const IDLE_THRESHOLD_SECS = 300;
 const POLL_INTERVAL_MS = 2000;
-
-// CPU delta threshold: Cursor idle uses ~1-2s CPU per 3s check.
-// Real work (AI, builds, typing) uses 3+ seconds.
-const CPU_ACTIVE_THRESHOLD = 3;
 
 interface ActiveSession {
   id: number;
   appName: string;
+  lastActive: number;
 }
 
-let currentSession: ActiveSession | null = null;
-let lastTrackedTime = Date.now();
-let trackedWindowTitles: Map<string, string> = new Map();
+let activeSessions: Map<string, ActiveSession> = new Map();
 let pollInterval: ReturnType<typeof setInterval> | null = null;
-let polling = false;
 
-// Keyboard detection: track mouse position to distinguish keyboard from mouse input
-let lastMousePos: { x: number; y: number } | null = null;
+// ── Signal 1: Keyboard hook (uiohook) ─────────────────────────
+let lastRawKeyTime = 0; // any key, any app
+let lastKeyTime = 0;    // key in a tracked app only
+let hookStarted = false;
 
-// Process CPU monitoring
-let lastTotalCpu: Map<string, number> = new Map();
-let cpuCache: { results: Map<string, boolean>; checkedAt: number } = {
-  results: new Map(),
-  checkedAt: 0,
-};
+function startKeyboardHook() {
+  if (hookStarted) return;
+  hookStarted = true;
+  uIOhook.on("keydown", () => {
+    lastRawKeyTime = Date.now();
+  });
+  uIOhook.start();
+}
 
+function stopKeyboardHook() {
+  if (!hookStarted) return;
+  uIOhook.stop();
+  hookStarted = false;
+}
+
+// Called from poll() only when a tracked app is focused
+function checkTypingInTrackedApp(): boolean {
+  const keyRecent = Date.now() - lastRawKeyTime < 2000;
+  if (keyRecent) {
+    lastKeyTime = Date.now();
+  }
+  return keyRecent;
+}
+
+// ── Signal 2: File system activity (code being written) ───────
+let lastFileChangeTime = 0;
+let fileWatcher: fs.FSWatcher | null = null;
+let watchedDir: string | null = null;
+
+function startFileWatcher() {
+  // Watch the project root for file changes (go up from apps/desktop)
+  let dir = process.cwd();
+  // Walk up to find monorepo root (has package.json with workspaces or pnpm-workspace.yaml)
+  for (let i = 0; i < 5; i++) {
+    if (fs.existsSync(path.join(dir, "pnpm-workspace.yaml")) || fs.existsSync(path.join(dir, "turbo.json"))) break;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  if (fileWatcher || !fs.existsSync(dir)) return;
+  watchedDir = dir;
+
+  try {
+    fileWatcher = fs.watch(dir, { recursive: true }, (eventType, filename) => {
+      if (!filename) return;
+      // Only count real source code changes
+      if (
+        filename.includes("node_modules") ||
+        filename.includes(".git") ||
+        filename.includes("dist") ||
+        filename.includes(".next") ||
+        filename.includes(".vite") ||
+        filename.includes(".turbo") ||
+        filename.includes(".cache") ||
+        filename.includes("tracker-debug") ||
+        filename.includes("vibeclock.db") ||
+        filename.includes(".tmp") ||
+        filename.includes(".log") ||
+        filename.includes("lock") ||
+        filename.endsWith(".map")
+      ) return;
+      // Only trigger on actual source files
+      if (!/\.(ts|tsx|js|jsx|json|css|html|md|prisma|py|rs|go|java|rb|swift|c|cpp|h)$/i.test(filename)) return;
+      lastFileChangeTime = Date.now();
+    });
+  } catch {}
+}
+
+function stopFileWatcher() {
+  if (fileWatcher) {
+    fileWatcher.close();
+    fileWatcher = null;
+  }
+}
+
+// Short window for regular file changes, longer when claude is active
+// (Claude work is bursty: write → think → read → write)
+function isCodeBeingWritten(claudeActive: boolean): boolean {
+  const window = claudeActive ? 8_000 : 3000;
+  return Date.now() - lastFileChangeTime < window;
+}
+
+// ── Helpers ───────────────────────────────────────────────────
 function isTrackedApp(appName: string): boolean {
   return TRACKED_APPS.some((tracked) =>
     appName.toLowerCase().includes(tracked.toLowerCase())
   );
 }
 
-function notifyRenderer(data: { appName?: string; windowTitle?: string; active: boolean }) {
+function notifyRenderer(data: { activeApps?: string[]; active: boolean }) {
   const windows = BrowserWindow.getAllWindows();
   for (const w of windows) {
     w.webContents.send("tracker:update", data);
   }
 }
 
-// Detect keyboard typing: if system reports input but mouse hasn't moved, it's keyboard
-function isKeyboardActive(): boolean {
-  const idleSecs = powerMonitor.getSystemIdleTime();
-  const cursorPos = screen.getCursorScreenPoint();
+// Claude process detection via tasklist + memory change detection
+let claudeRunning = false;
+let claudeWorking = false;
+let claudeCheckTime = 0;
+let lastClaudeMem = 0;
 
-  const mouseMovedSinceLastPoll =
-    lastMousePos !== null &&
-    (cursorPos.x !== lastMousePos.x || cursorPos.y !== lastMousePos.y);
-
-  lastMousePos = { x: cursorPos.x, y: cursorPos.y };
-
-  // Input detected within 3 seconds AND mouse didn't move = keyboard typing
-  return idleSecs < 3 && !mouseMovedSinceLastPoll;
-}
-
-// Check CPU usage of tracked processes via PowerShell
-function checkProcessCpu(): Promise<{ appName: string | null; active: boolean }> {
-  if (Date.now() - cpuCache.checkedAt < 3000) {
-    for (const [name, active] of cpuCache.results) {
-      if (active) return Promise.resolve({ appName: name, active: true });
-    }
-    return Promise.resolve({ appName: null, active: false });
+function checkClaudeProcess(): Promise<{ running: boolean; working: boolean }> {
+  if (Date.now() - claudeCheckTime < 3000) {
+    return Promise.resolve({ running: claudeRunning, working: claudeWorking });
   }
-
   return new Promise((resolve) => {
-    const cmd = `Get-Process | Where-Object {$_.CPU -gt 0} | Group-Object ProcessName | ForEach-Object { "$($_.Name)=$(($_.Group|Measure-Object CPU -Sum).Sum)" }`;
+    execFile("tasklist", ["/FI", "IMAGENAME eq claude.exe", "/NH"], { timeout: 2000 }, (err, stdout) => {
+      claudeCheckTime = Date.now();
+      claudeRunning = !err && stdout.includes("claude.exe");
 
-    execFile(
-      "powershell.exe",
-      ["-NoProfile", "-NoLogo", "-Command", cmd],
-      { timeout: 5000 },
-      (err, stdout) => {
-        cpuCache.checkedAt = Date.now();
-        cpuCache.results.clear();
-
-        if (err || !stdout.trim()) {
-          resolve({ appName: null, active: false });
-          return;
-        }
-
-        let firstActive: string | null = null;
-
-        for (const line of stdout.trim().split("\n")) {
-          const match = line.trim().match(/^(.+?)=(.+)$/);
-          if (!match) continue;
-
-          const processName = match[1];
-          if (!isTrackedApp(processName)) continue;
-
-          const cpuTotal = parseFloat(match[2]);
-          if (isNaN(cpuTotal)) continue;
-
-          const prevCpu = lastTotalCpu.get(processName) || 0;
-          lastTotalCpu.set(processName, cpuTotal);
-
-          // Only count as working if CPU delta exceeds threshold
-          // (filters out Cursor's idle background CPU usage)
-          const isWorking = prevCpu > 0 && cpuTotal - prevCpu > CPU_ACTIVE_THRESHOLD;
-          cpuCache.results.set(processName, isWorking);
-
-          if (isWorking && !firstActive) {
-            firstActive = processName;
-          }
-        }
-
-        resolve({ appName: firstActive, active: firstActive !== null });
+      if (!claudeRunning) {
+        claudeWorking = false;
+        lastClaudeMem = 0;
+        resolve({ running: false, working: false });
+        return;
       }
-    );
+
+      // Parse memory from tasklist output (e.g. "1,075,920 K")
+      const memMatch = stdout.match(/claude\.exe\s+\d+\s+\S+\s+\d+\s+([\d,]+)\s*K/);
+      const mem = memMatch ? parseInt(memMatch[1].replace(/,/g, "")) : 0;
+
+      if (lastClaudeMem > 0 && mem > 0) {
+        // Memory changed by > 500KB = claude is actively working
+        const delta = Math.abs(mem - lastClaudeMem);
+        claudeWorking = delta > 500;
+      }
+      lastClaudeMem = mem;
+
+      resolve({ running: claudeRunning, working: claudeWorking });
+    });
   });
 }
 
+// ── Poll ──────────────────────────────────────────────────────
 async function poll() {
-  if (polling) return;
-  polling = true;
-
   try {
     const activeWin = await import("active-win");
     const focusedWin = await activeWin.activeWindow();
-    const allWindows = await activeWin.openWindows();
-
-    // 1. Check all tracked app windows for title changes
-    let titleChangedApp: string | null = null;
-    let titleChangedTitle: string | null = null;
-
-    for (const win of allWindows) {
-      const appName = win.owner.name;
-      if (!isTrackedApp(appName)) continue;
-
-      const key = `${appName}::${win.id}`;
-      const prevTitle = trackedWindowTitles.get(key);
-      trackedWindowTitles.set(key, win.title);
-
-      if (prevTitle !== undefined && prevTitle !== win.title) {
-        titleChangedApp = appName;
-        titleChangedTitle = win.title;
-      }
-    }
-
-    // 2. Check focused window
     const focusedAppName = focusedWin?.owner.name ?? null;
     const focusedIsTracked = focusedAppName ? isTrackedApp(focusedAppName) : false;
 
-    // 3. Detect keyboard typing (not mouse) in a tracked app
-    const typing = isKeyboardActive();
-    const typingInTrackedApp = focusedIsTracked && typing;
+    const activeApps = new Set<string>();
+    const claude = await checkClaudeProcess();
+    const codeChanging = isCodeBeingWritten(claude.running);
 
-    // 4. Check process CPU (catches AI generating, builds, etc.)
-    const cpuCheck = await checkProcessCpu();
+    // Only count typing when a tracked app is focused
+    const typingInTrackedApp = focusedIsTracked && focusedAppName && checkTypingInTrackedApp();
 
-    // Active when:
-    // A) User is typing in a tracked app (keyboard only, no mouse)
-    // B) A tracked app's window title changed (app doing work)
-    // C) A tracked process is using significant CPU (AI/build, not idle)
-    const titleChanged = titleChangedApp !== null;
-    const processWorking = cpuCheck.active;
-
-    const isActive = typingInTrackedApp || titleChanged || processWorking;
-
-    // Pick which app to attribute
-    let activeAppName: string | null = null;
-    let activeWindowTitle: string | null = null;
-
+    // Signal 1: User is typing in a tracked app
     if (typingInTrackedApp) {
-      activeAppName = focusedAppName;
-      activeWindowTitle = focusedWin?.title ?? null;
-    } else if (titleChanged) {
-      activeAppName = titleChangedApp;
-      activeWindowTitle = titleChangedTitle;
-    } else if (processWorking) {
-      activeAppName = cpuCheck.appName;
+      activeApps.add(focusedAppName!);
+      if (claude.running) activeApps.add("claude");
     }
 
-    if (isActive && activeAppName) {
-      lastTrackedTime = Date.now();
+    // Signal 2: Code is being written while a tracked app is focused
+    if (focusedIsTracked && codeChanging && focusedAppName) {
+      activeApps.add(focusedAppName);
+      if (claude.running) activeApps.add("claude");
+    }
 
-      // Keep one continuous session — only create new if none exists
-      if (!currentSession) {
-        const session = startSession(activeAppName, activeWindowTitle);
-        currentSession = { id: session.id, appName: activeAppName };
+    // Signal 3: Claude memory is changing = actively working (thinking/API/tools)
+    if (claude.working && focusedIsTracked && focusedAppName) {
+      activeApps.add("claude");
+      activeApps.add(focusedAppName);
+    }
+
+    // Notify renderer
+    if (activeApps.size > 0) {
+      const now = Date.now();
+      const tickSecs = Math.round(POLL_INTERVAL_MS / 1000);
+
+      tickDailyTotal(tickSecs);
+
+      for (const appName of activeApps) {
+        let session = activeSessions.get(appName);
+        if (!session) {
+          const newSession = startSession(appName, focusedWin?.title ?? null);
+          session = { id: newSession.id, appName, lastActive: now };
+          activeSessions.set(appName, session);
+        }
+        session.lastActive = now;
+        tickSession(session.id, tickSecs);
       }
 
-      tickSession(currentSession.id, Math.round(POLL_INTERVAL_MS / 1000));
-
-      notifyRenderer({
-        appName: activeAppName,
-        windowTitle: activeWindowTitle ?? undefined,
-        active: true,
-      });
+      notifyRenderer({ activeApps: Array.from(activeApps), active: true });
     } else {
       notifyRenderer({ active: false });
+    }
 
-      // Only close session after sustained idle (120s)
-      const idleSecs = (Date.now() - lastTrackedTime) / 1000;
-      if (currentSession && idleSecs > IDLE_THRESHOLD_SECS) {
-        closeSession(currentSession.id);
-        currentSession = null;
+    // Close sessions idle past threshold
+    const now = Date.now();
+    for (const [appName, session] of activeSessions) {
+      if ((now - session.lastActive) / 1000 > IDLE_THRESHOLD_SECS) {
+        closeSession(session.id);
+        activeSessions.delete(appName);
       }
     }
   } catch (err) {
     console.error("Tracker poll error:", err);
-  } finally {
-    polling = false;
   }
 }
 
 export function startTracking() {
   if (pollInterval) return;
+  startKeyboardHook();
+  startFileWatcher();
   pollInterval = setInterval(poll, POLL_INTERVAL_MS);
 }
 
@@ -235,12 +254,20 @@ export function stopTracking() {
     clearInterval(pollInterval);
     pollInterval = null;
   }
-  if (currentSession) {
-    closeSession(currentSession.id);
-    currentSession = null;
+  stopKeyboardHook();
+  stopFileWatcher();
+  for (const session of activeSessions.values()) {
+    closeSession(session.id);
   }
+  activeSessions.clear();
 }
 
 export function getCurrentSession() {
-  return currentSession;
+  let latest: ActiveSession | null = null;
+  for (const session of activeSessions.values()) {
+    if (!latest || session.lastActive > latest.lastActive) {
+      latest = session;
+    }
+  }
+  return latest;
 }

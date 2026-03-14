@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 function formatTime(secs: number): string {
   const hours = Math.floor(secs / 3600);
@@ -10,10 +10,29 @@ function formatTime(secs: number): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+// Base design dimensions (default widget size minus padding)
+const BASE_W = 156;
+const BASE_H = 54;
+
 export function Widget() {
   const [displaySecs, setDisplaySecs] = useState(0);
   const [tracking, setTracking] = useState(false);
-  const [currentApp, setCurrentApp] = useState<string | null>(null);
+  const [activeApps, setActiveApps] = useState<string[]>([]);
+  const [scale, setScale] = useState(1);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Scale content proportionally when widget is resized
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const { width, height } = entries[0].contentRect;
+      const s = Math.min(width / BASE_W, height / BASE_H);
+      setScale(Math.max(0.8, s));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   // Initial load + periodic DB correction (only adjusts upward)
   useEffect(() => {
@@ -30,7 +49,7 @@ export function Widget() {
     return () => clearInterval(dbInterval);
   }, []);
 
-  // Local tick: +1 every second while tracking (smooth counting)
+  // Local tick: +1 every second while tracking (wall-clock time)
   useEffect(() => {
     if (!tracking) return;
 
@@ -42,27 +61,43 @@ export function Widget() {
   }, [tracking]);
 
   // Listen for tracker updates
+  const lastActiveRef = useRef(0);
   useEffect(() => {
-    window.electronAPI.onTrackerUpdate((data) => {
-      setTracking(data.active);
+    window.electronAPI.onTrackerUpdate((data: any) => {
       if (data.active) {
-        setCurrentApp(data.appName);
+        lastActiveRef.current = Date.now();
+        setTracking(true);
+        setActiveApps(data.activeApps || []);
       } else {
-        setCurrentApp(null);
+        setTracking(false);
+        setActiveApps([]);
       }
     });
   }, []);
 
+  // Safety net: force idle if no active event in 4 seconds
+  useEffect(() => {
+    const check = setInterval(() => {
+      if (tracking && Date.now() - lastActiveRef.current > 4000) {
+        setTracking(false);
+        setActiveApps([]);
+      }
+    }, 1000);
+    return () => clearInterval(check);
+  }, [tracking]);
+
   return (
     <div
+      ref={containerRef}
       style={{
+        position: "relative",
         width: "100%",
         height: "100%",
         borderRadius: 12,
         background: "rgba(10, 10, 10, 0.92)",
         border: `1px solid ${tracking ? "rgba(0, 255, 136, 0.2)" : "rgba(255,255,255,0.06)"}`,
         backdropFilter: "blur(20px)",
-        padding: "8px 12px",
+        padding: `${Math.round(8 * scale)}px ${Math.round(12 * scale)}px`,
         cursor: "move",
         userSelect: "none",
         // @ts-ignore
@@ -74,22 +109,47 @@ export function Widget() {
         transition: "border-color 0.3s",
       }}
     >
+      {/* Top-right resize handle */}
+      <div
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.electronAPI.startResize("top-right");
+          const onMouseUp = () => {
+            window.electronAPI.stopResize();
+            document.removeEventListener("mouseup", onMouseUp);
+          };
+          document.addEventListener("mouseup", onMouseUp);
+        }}
+        style={{
+          position: "absolute",
+          top: 0,
+          right: 0,
+          width: 18,
+          height: 18,
+          cursor: "nesw-resize",
+          zIndex: 10,
+          // @ts-ignore
+          WebkitAppRegion: "no-drag",
+        }}
+      />
+
       {/* Timer row */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: Math.round(6 * scale) }}>
         <div
           style={{
-            width: 6,
-            height: 6,
+            width: Math.round(6 * scale),
+            height: Math.round(6 * scale),
             borderRadius: "50%",
             background: tracking ? "#00ff88" : "#444",
-            boxShadow: tracking ? "0 0 8px #00ff88" : "none",
+            boxShadow: tracking ? `0 0 ${Math.round(8 * scale)}px #00ff88` : "none",
             transition: "all 0.3s",
             flexShrink: 0,
           }}
         />
         <span
           style={{
-            fontSize: 22,
+            fontSize: Math.round(22 * scale),
             fontWeight: 700,
             color: tracking ? "#00ff88" : "#666",
             letterSpacing: "-0.5px",
@@ -106,7 +166,7 @@ export function Widget() {
             background: "transparent",
             border: "none",
             color: "#555",
-            fontSize: 14,
+            fontSize: Math.round(14 * scale),
             cursor: "pointer",
             padding: 0,
             lineHeight: 1,
@@ -120,23 +180,52 @@ export function Widget() {
         </button>
       </div>
 
-      {/* Current app */}
+      {/* Active apps list */}
       <div
         style={{
-          marginTop: 3,
-          fontSize: 10,
-          color: tracking ? "#a3a3a3" : "#555",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          marginTop: Math.round(3 * scale),
+          display: "flex",
+          flexDirection: "column",
+          gap: Math.round(1 * scale),
         }}
       >
-        {tracking && currentApp ? (
-          <>
-            <span style={{ color: "#00ff88" }}>●</span> {currentApp}
-          </>
+        {tracking && activeApps.length > 0 ? (
+          activeApps.map((app) => (
+            <div
+              key={app}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: Math.round(4 * scale),
+                fontSize: Math.round(10 * scale),
+                color: "#a3a3a3",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <div
+                style={{
+                  width: Math.round(4 * scale),
+                  height: Math.round(4 * scale),
+                  borderRadius: "50%",
+                  background: "#00ff88",
+                  boxShadow: `0 0 ${Math.round(4 * scale)}px #00ff88`,
+                  flexShrink: 0,
+                }}
+              />
+              {app}
+            </div>
+          ))
         ) : (
-          "idle"
+          <div
+            style={{
+              fontSize: Math.round(10 * scale),
+              color: "#555",
+            }}
+          >
+            idle
+          </div>
         )}
       </div>
     </div>

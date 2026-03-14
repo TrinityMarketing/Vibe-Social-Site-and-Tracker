@@ -5,7 +5,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 const COLORS = ["#00ff88", "#6366f1", "#0ea5e9", "#f59e0b", "#ec4899"];
 
 interface AppBreakdownProps {
-  data: { appName: string; totalHours: number }[];
+  data: { appName: string; totalHours: number; suffix?: string }[];
 }
 
 export function AppBreakdown({ data }: AppBreakdownProps) {
@@ -56,7 +56,7 @@ export function AppBreakdown({ data }: AppBreakdownProps) {
             />
             <span className="text-sm text-foreground">{app.appName}</span>
             <span className="font-mono text-sm text-muted-foreground">
-              {app.totalHours}h
+              {app.totalHours}{app.suffix || "h"}
             </span>
           </div>
         ))}

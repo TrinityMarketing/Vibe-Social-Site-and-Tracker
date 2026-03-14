@@ -53,6 +53,13 @@ export async function initDb() {
     );
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS daily_totals (
+      date TEXT PRIMARY KEY,
+      totalSecs INTEGER DEFAULT 0
+    );
+  `);
+
   saveDb();
   return db;
 }
@@ -130,11 +137,23 @@ export function markSynced(ids: number[]) {
   saveDb();
 }
 
+// Increment wall-clock coding time for today (called once per poll, not per app)
+export function tickDailyTotal(seconds: number) {
+  const today = new Date().toISOString().split("T")[0];
+  getDb().run(
+    `INSERT INTO daily_totals (date, totalSecs) VALUES (?, ?)
+     ON CONFLICT(date) DO UPDATE SET totalSecs = totalSecs + ?`,
+    [today, seconds, seconds]
+  );
+  saveDb();
+}
+
 export function getTodayStats(): { totalSecs: number; appName: string | null } {
   const today = new Date().toISOString().split("T")[0];
 
+  // Use wall-clock total (not sum of overlapping sessions)
   const totalResult = getDb().exec(
-    `SELECT COALESCE(SUM(durationSecs), 0) as totalSecs FROM sessions WHERE startTime LIKE '${today}%'`
+    `SELECT COALESCE(totalSecs, 0) FROM daily_totals WHERE date = '${today}'`
   );
   const totalSecs = totalResult.length ? (totalResult[0].values[0][0] as number) : 0;
 
