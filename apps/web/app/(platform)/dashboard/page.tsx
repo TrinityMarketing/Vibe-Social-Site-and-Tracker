@@ -19,17 +19,15 @@ export default async function DashboardPage() {
   const weekAgo = new Date(now);
   weekAgo.setDate(weekAgo.getDate() - 7);
 
-  const [todayResult, weeklyResult, sessions, topAppResult, weeklyBreakdown] =
+  const [todayRollup, weeklyRollups, sessions, topAppResult, weeklyBreakdown] =
     await Promise.all([
-      // Today's time
-      prisma.session.aggregate({
-        where: { userId: user.id, startTime: { gte: todayStart } },
-        _sum: { durationSecs: true },
+      // Today's wall-clock time from DailyStat
+      prisma.dailyStat.findUnique({
+        where: { userId_date: { userId: user.id, date: todayStart } },
       }),
-      // Weekly hours
-      prisma.session.aggregate({
-        where: { userId: user.id, startTime: { gte: weekAgo } },
-        _sum: { durationSecs: true },
+      // Weekly wall-clock time from DailyStats
+      prisma.dailyStat.findMany({
+        where: { userId: user.id, date: { gte: weekAgo } },
       }),
       // Recent sessions
       prisma.session.findMany({
@@ -69,8 +67,8 @@ export default async function DashboardPage() {
       ),
     ]);
 
-  const todaySecs = todayResult._sum.durationSecs || 0;
-  const weeklySecs = weeklyResult._sum.durationSecs || 0;
+  const todaySecs = todayRollup?.totalSecs || 0;
+  const weeklySecs = weeklyRollups.reduce((sum, d) => sum + d.totalSecs, 0);
   const todayDisplay = todaySecs >= 3600
     ? { value: Math.round((todaySecs / 3600) * 10) / 10, suffix: "hrs" }
     : { value: Math.round(todaySecs / 60), suffix: "min" };

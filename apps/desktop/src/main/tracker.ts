@@ -100,8 +100,10 @@ function startFileWatcher() {
         filename.includes("lock") ||
         filename.endsWith(".map")
       ) return;
-      // Only trigger on actual source files
-      if (!/\.(ts|tsx|js|jsx|json|css|html|md|prisma|py|rs|go|java|rb|swift|c|cpp|h)$/i.test(filename)) return;
+      // Only trigger on actual source code files (no json — too noisy from dev servers)
+      if (!/\.(ts|tsx|js|jsx|css|html|md|prisma|py|rs|go|java|rb|swift|c|cpp|h)$/i.test(filename)) return;
+      // Ignore build output and generated files
+      if (filename.includes("tsbuildinfo") || filename.includes("__generated")) return;
       lastFileChangeTime = Date.now();
     });
   } catch {}
@@ -135,40 +137,17 @@ function notifyRenderer(data: { activeApps?: string[]; active: boolean }) {
   }
 }
 
-// Claude process detection via tasklist + memory change detection
+// Claude process detection via tasklist (just checks if running)
 let claudeRunning = false;
-let claudeWorking = false;
 let claudeCheckTime = 0;
-let lastClaudeMem = 0;
 
-function checkClaudeProcess(): Promise<{ running: boolean; working: boolean }> {
-  if (Date.now() - claudeCheckTime < 3000) {
-    return Promise.resolve({ running: claudeRunning, working: claudeWorking });
-  }
+function checkClaudeProcess(): Promise<boolean> {
+  if (Date.now() - claudeCheckTime < 4000) return Promise.resolve(claudeRunning);
   return new Promise((resolve) => {
     execFile("tasklist", ["/FI", "IMAGENAME eq claude.exe", "/NH"], { timeout: 2000 }, (err, stdout) => {
       claudeCheckTime = Date.now();
       claudeRunning = !err && stdout.includes("claude.exe");
-
-      if (!claudeRunning) {
-        claudeWorking = false;
-        lastClaudeMem = 0;
-        resolve({ running: false, working: false });
-        return;
-      }
-
-      // Parse memory from tasklist output (e.g. "1,075,920 K")
-      const memMatch = stdout.match(/claude\.exe\s+\d+\s+\S+\s+\d+\s+([\d,]+)\s*K/);
-      const mem = memMatch ? parseInt(memMatch[1].replace(/,/g, "")) : 0;
-
-      if (lastClaudeMem > 0 && mem > 0) {
-        // Memory changed by > 500KB = claude is actively working
-        const delta = Math.abs(mem - lastClaudeMem);
-        claudeWorking = delta > 500;
-      }
-      lastClaudeMem = mem;
-
-      resolve({ running: claudeRunning, working: claudeWorking });
+      resolve(claudeRunning);
     });
   });
 }
@@ -183,7 +162,7 @@ async function poll() {
 
     const activeApps = new Set<string>();
     const claude = await checkClaudeProcess();
-    const codeChanging = isCodeBeingWritten(claude.running);
+    const codeChanging = isCodeBeingWritten(claude);
 
     // Only count typing when a tracked app is focused
     const typingInTrackedApp = focusedIsTracked && focusedAppName && checkTypingInTrackedApp();
@@ -191,19 +170,13 @@ async function poll() {
     // Signal 1: User is typing in a tracked app
     if (typingInTrackedApp) {
       activeApps.add(focusedAppName!);
-      if (claude.running) activeApps.add("claude");
+      if (claude) activeApps.add("claude");
     }
 
     // Signal 2: Code is being written while a tracked app is focused
     if (focusedIsTracked && codeChanging && focusedAppName) {
       activeApps.add(focusedAppName);
-      if (claude.running) activeApps.add("claude");
-    }
-
-    // Signal 3: Claude memory is changing = actively working (thinking/API/tools)
-    if (claude.working && focusedIsTracked && focusedAppName) {
-      activeApps.add("claude");
-      activeApps.add(focusedAppName);
+      if (claude) activeApps.add("claude");
     }
 
     // Notify renderer

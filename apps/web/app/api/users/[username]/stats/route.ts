@@ -17,21 +17,21 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Total hours
-    const totalResult = await prisma.session.aggregate({
+    // Total hours (wall-clock from DailyStats, no double-counting)
+    const totalResult = await prisma.dailyStat.aggregate({
       where: { userId: user.id },
-      _sum: { durationSecs: true },
+      _sum: { totalSecs: true },
     });
-    const totalHours = Math.round((totalResult._sum.durationSecs || 0) / 3600 * 10) / 10;
+    const totalHours = Math.round((totalResult._sum.totalSecs || 0) / 3600 * 10) / 10;
 
-    // Weekly hours (last 7 days)
+    // Weekly hours (last 7 days, wall-clock)
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
-    const weeklyResult = await prisma.session.aggregate({
-      where: { userId: user.id, startTime: { gte: weekAgo } },
-      _sum: { durationSecs: true },
+    const weeklyResult = await prisma.dailyStat.aggregate({
+      where: { userId: user.id, date: { gte: weekAgo } },
+      _sum: { totalSecs: true },
     });
-    const weeklyHours = Math.round((weeklyResult._sum.durationSecs || 0) / 3600 * 10) / 10;
+    const weeklyHours = Math.round((weeklyResult._sum.totalSecs || 0) / 3600 * 10) / 10;
 
     // Top apps
     const topAppsRaw = await prisma.session.groupBy({
