@@ -54,11 +54,16 @@ export default async function PublicProfilePage({ params }: Props) {
   if (!user || !user.isPublic) notFound();
 
   // Fetch stats
-  const [totalRollup, topApps, recentSessions, streakDates] = await Promise.all([
-    // Wall-clock total from DailyStats (no double-counting)
+  const [totalRollup, totalSessionSum, topApps, recentSessions, streakDates] = await Promise.all([
+    // Wall-clock total from DailyStats
     prisma.dailyStat.aggregate({
       where: { userId: user.id },
       _sum: { totalSecs: true },
+    }),
+    // Fallback: session sum
+    prisma.session.aggregate({
+      where: { userId: user.id },
+      _sum: { durationSecs: true },
     }),
     prisma.session.groupBy({
       by: ["appName"],
@@ -80,7 +85,9 @@ export default async function PublicProfilePage({ params }: Props) {
     }),
   ]);
 
-  const totalSecs = totalRollup._sum.totalSecs || 0;
+  const totalFromRollup = totalRollup._sum.totalSecs || 0;
+  const totalFromSessions = totalSessionSum._sum.durationSecs || 0;
+  const totalSecs = totalFromRollup > 0 ? totalFromRollup : totalFromSessions;
   const totalHours = totalSecs >= 3600
     ? Math.round((totalSecs / 3600) * 10) / 10
     : Math.round(totalSecs / 60);

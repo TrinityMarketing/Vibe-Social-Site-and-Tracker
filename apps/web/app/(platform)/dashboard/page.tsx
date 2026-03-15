@@ -19,7 +19,7 @@ export default async function DashboardPage() {
   const weekAgo = new Date(now);
   weekAgo.setDate(weekAgo.getDate() - 7);
 
-  const [todayRollup, weeklyRollups, sessions, topAppResult, weeklyBreakdown] =
+  const [todayRollup, weeklyRollups, todaySessionSum, weeklySessionSum, sessions, topAppResult, weeklyBreakdown] =
     await Promise.all([
       // Today's wall-clock time from DailyStat
       prisma.dailyStat.findUnique({
@@ -28,6 +28,16 @@ export default async function DashboardPage() {
       // Weekly wall-clock time from DailyStats
       prisma.dailyStat.findMany({
         where: { userId: user.id, date: { gte: weekAgo } },
+      }),
+      // Fallback: session sum for today
+      prisma.session.aggregate({
+        where: { userId: user.id, startTime: { gte: todayStart } },
+        _sum: { durationSecs: true },
+      }),
+      // Fallback: session sum for week
+      prisma.session.aggregate({
+        where: { userId: user.id, startTime: { gte: weekAgo } },
+        _sum: { durationSecs: true },
       }),
       // Recent sessions
       prisma.session.findMany({
@@ -67,8 +77,14 @@ export default async function DashboardPage() {
       ),
     ]);
 
-  const todaySecs = todayRollup?.totalSecs || 0;
-  const weeklySecs = weeklyRollups.reduce((sum, d) => sum + d.totalSecs, 0);
+  // Use DailyStat if available, fall back to session sums
+  const todayFromRollup = todayRollup?.totalSecs || 0;
+  const todayFromSessions = todaySessionSum._sum.durationSecs || 0;
+  const todaySecs = todayFromRollup > 0 ? todayFromRollup : todayFromSessions;
+
+  const weeklyFromRollup = weeklyRollups.reduce((sum, d) => sum + d.totalSecs, 0);
+  const weeklyFromSessions = weeklySessionSum._sum.durationSecs || 0;
+  const weeklySecs = weeklyFromRollup > 0 ? weeklyFromRollup : weeklyFromSessions;
   const todayDisplay = todaySecs >= 3600
     ? { value: Math.round((todaySecs / 3600) * 10) / 10, suffix: "hrs" }
     : { value: Math.round(todaySecs / 60), suffix: "min" };
