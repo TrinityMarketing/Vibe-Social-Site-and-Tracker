@@ -15,9 +15,8 @@ export default async function DashboardPage() {
 
   // Fetch stats
   const now = new Date();
-  const todayStart = new Date(now.toISOString().split("T")[0]);
-  const weekAgo = new Date(now);
-  weekAgo.setDate(weekAgo.getDate() - 7);
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const weekAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
 
   const [todayRollup, weeklyRollups, todaySessionSum, weeklySessionSum, sessions, topAppResult, weeklyBreakdown] =
     await Promise.all([
@@ -57,9 +56,8 @@ export default async function DashboardPage() {
         Array.from({ length: 7 }, (_, i) => {
           const d = new Date();
           d.setDate(d.getDate() - (6 - i));
-          const dayStart = new Date(d.toISOString().split("T")[0]);
-          const dayEnd = new Date(dayStart);
-          dayEnd.setDate(dayEnd.getDate() + 1);
+          const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+          const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
           return prisma.session
             .aggregate({
               where: {
