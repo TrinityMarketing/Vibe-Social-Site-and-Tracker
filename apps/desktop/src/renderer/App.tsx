@@ -9,9 +9,23 @@ declare global {
       setApiKey: (key: string) => Promise<void>;
       setApiUrl: (url: string) => Promise<void>;
       getTodayStats: () => Promise<{ totalSecs: number; appName: string | null }>;
+      getTrackerConfig: () => Promise<{
+        trackingPaused: boolean;
+        redactWindowTitles: boolean;
+        excludedApps: string[];
+        currentProject: string | null;
+      }>;
+      setTrackingPaused: (paused: boolean) => Promise<{
+        trackingPaused: boolean;
+        redactWindowTitles: boolean;
+        excludedApps: string[];
+        currentProject: string | null;
+      }>;
       forceSync: () => Promise<void>;
       onTrackerUpdate: (callback: (data: any) => void) => void;
       closeWindow: () => Promise<void>;
+      startResize: (direction: string) => Promise<void>;
+      stopResize: () => Promise<void>;
       getHash: () => string;
     };
   }

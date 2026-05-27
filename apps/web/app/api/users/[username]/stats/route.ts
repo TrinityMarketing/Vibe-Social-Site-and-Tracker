@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isPublicSession } from "@/lib/privacy";
 import { NextResponse } from "next/server";
 import type { UserStats } from "@vibeclock/shared";
 
@@ -17,48 +18,58 @@ export async function GET(
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    // Total hours (wall-clock from DailyStats, no double-counting)
-    const totalResult = await prisma.dailyStat.aggregate({
+    const allSessions = await prisma.session.findMany({
       where: { userId: user.id },
-      _sum: { totalSecs: true },
+      select: {
+        appName: true,
+        projectName: true,
+        windowTitle: true,
+        startTime: true,
+        date: true,
+        durationSecs: true,
+      },
     });
-    const totalHours = Math.round((totalResult._sum.totalSecs || 0) / 3600 * 10) / 10;
+
+    const publicSessions = allSessions.filter((session) =>
+      isPublicSession(session, user)
+    );
+
+    const totalSecs = publicSessions.reduce(
+      (sum, session) => sum + session.durationSecs,
+      0
+    );
+    const totalHours = Math.round((totalSecs / 3600) * 10) / 10;
 
     // Weekly hours (last 7 days, wall-clock)
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
-    const weeklyResult = await prisma.dailyStat.aggregate({
-      where: { userId: user.id, date: { gte: weekAgo } },
-      _sum: { totalSecs: true },
-    });
-    const weeklyHours = Math.round((weeklyResult._sum.totalSecs || 0) / 3600 * 10) / 10;
+    const weeklySecs = publicSessions
+      .filter((session) => session.startTime >= weekAgo)
+      .reduce((sum, session) => sum + session.durationSecs, 0);
+    const weeklyHours = Math.round((weeklySecs / 3600) * 10) / 10;
 
     // Top apps
-    const topAppsRaw = await prisma.session.groupBy({
-      by: ["appName"],
-      where: { userId: user.id },
-      _sum: { durationSecs: true },
-      orderBy: { _sum: { durationSecs: "desc" } },
-      take: 5,
-    });
-    const topApps = topAppsRaw.map((a) => ({
-      appName: a.appName,
-      totalHours: Math.round((a._sum.durationSecs || 0) / 3600 * 10) / 10,
-    }));
+    const appTotals = new Map<string, number>();
+    for (const session of publicSessions) {
+      appTotals.set(
+        session.appName,
+        (appTotals.get(session.appName) || 0) + session.durationSecs
+      );
+    }
+    const topApps = Array.from(appTotals.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([appName, secs]) => ({
+        appName,
+        totalHours: Math.round((secs / 3600) * 10) / 10,
+      }));
 
     // Streak calculation
-    const sessions = await prisma.session.findMany({
-      where: { userId: user.id },
-      select: { date: true },
-      distinct: ["date"],
-      orderBy: { date: "desc" },
-    });
-
     let currentStreak = 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const dates = sessions.map((s) => {
+    const dates = publicSessions.map((s) => {
       const d = new Date(s.date);
       d.setHours(0, 0, 0, 0);
       return d.getTime();
@@ -87,17 +98,13 @@ export async function GET(
       const dayEnd = new Date(dayStart);
       dayEnd.setDate(dayEnd.getDate() + 1);
 
-      const dayResult = await prisma.session.aggregate({
-        where: {
-          userId: user.id,
-          startTime: { gte: dayStart, lt: dayEnd },
-        },
-        _sum: { durationSecs: true },
-      });
+      const daySecs = publicSessions
+        .filter((session) => session.startTime >= dayStart && session.startTime < dayEnd)
+        .reduce((sum, session) => sum + session.durationSecs, 0);
 
       weeklyBreakdown.push({
         day: dayStart.toLocaleDateString("en-US", { weekday: "short" }),
-        hours: Math.round((dayResult._sum.durationSecs || 0) / 3600 * 10) / 10,
+        hours: Math.round((daySecs / 3600) * 10) / 10,
       });
     }
 

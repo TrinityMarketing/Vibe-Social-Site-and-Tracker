@@ -7,9 +7,12 @@ interface LocalSession {
   id: number;
   appName: string;
   windowTitle: string | null;
+  projectName: string | null;
   startTime: string;
   endTime: string | null;
   durationSecs: number;
+  source: string;
+  confidence: number;
   synced: number;
 }
 
@@ -20,6 +23,40 @@ function saveDb() {
   const data = db.export();
   const buffer = Buffer.from(data);
   fs.writeFileSync(dbPath, buffer);
+}
+
+function ensureColumn(table: string, column: string, definition: string) {
+  try {
+    getDb().run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch {
+    // Column already exists.
+  }
+}
+
+function getConfigValue(key: string): string | null {
+  const result = getDb().exec("SELECT value FROM config WHERE key = ?", [key]);
+  return result.length ? (result[0].values[0][0] as string) : null;
+}
+
+function setConfigValue(key: string, value: string) {
+  getDb().run("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)", [
+    key,
+    value,
+  ]);
+  saveDb();
+}
+
+function readJsonList(key: string): string[] {
+  const raw = getConfigValue(key);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 export async function initDb() {
@@ -39,9 +76,12 @@ export async function initDb() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       appName TEXT NOT NULL,
       windowTitle TEXT,
+      projectName TEXT,
       startTime TEXT NOT NULL,
       endTime TEXT,
       durationSecs INTEGER DEFAULT 0,
+      source TEXT DEFAULT 'active_window',
+      confidence REAL DEFAULT 0.4,
       synced INTEGER DEFAULT 0
     );
   `);
@@ -60,6 +100,10 @@ export async function initDb() {
     );
   `);
 
+  ensureColumn("sessions", "projectName", "TEXT");
+  ensureColumn("sessions", "source", "TEXT DEFAULT 'active_window'");
+  ensureColumn("sessions", "confidence", "REAL DEFAULT 0.4");
+
   saveDb();
   return db;
 }
@@ -71,12 +115,15 @@ export function getDb() {
 
 export function startSession(
   appName: string,
-  windowTitle: string | null
+  windowTitle: string | null,
+  projectName: string | null,
+  source = "active_window",
+  confidence = 0.4
 ): LocalSession {
   const now = new Date().toISOString();
   getDb().run(
-    "INSERT INTO sessions (appName, windowTitle, startTime) VALUES (?, ?, ?)",
-    [appName, windowTitle, now]
+    "INSERT INTO sessions (appName, windowTitle, projectName, startTime, source, confidence) VALUES (?, ?, ?, ?, ?, ?)",
+    [appName, windowTitle, projectName, now, source, confidence]
   );
 
   // Get ID before saveDb() — db.export() resets last_insert_rowid() in sql.js
@@ -91,9 +138,12 @@ export function startSession(
     id,
     appName,
     windowTitle,
+    projectName,
     startTime: now,
     endTime: null,
     durationSecs: 0,
+    source,
+    confidence,
     synced: 0,
   };
 }
@@ -115,7 +165,7 @@ export function closeSession(id: number) {
 export function getUnsyncedSessions(): LocalSession[] {
   // Sync both closed sessions AND active sessions with accumulated time
   const result = getDb().exec(
-    "SELECT id, appName, windowTitle, startTime, endTime, durationSecs, synced FROM sessions WHERE synced = 0 AND durationSecs > 0"
+    "SELECT id, appName, windowTitle, projectName, startTime, endTime, durationSecs, source, confidence, synced FROM sessions WHERE synced = 0 AND durationSecs > 0"
   );
   if (!result.length) return [];
 
@@ -123,10 +173,13 @@ export function getUnsyncedSessions(): LocalSession[] {
     id: row[0] as number,
     appName: row[1] as string,
     windowTitle: row[2] as string | null,
-    startTime: row[3] as string,
-    endTime: row[4] as string | null,
-    durationSecs: row[5] as number,
-    synced: row[6] as number,
+    projectName: row[3] as string | null,
+    startTime: row[4] as string,
+    endTime: row[5] as string | null,
+    durationSecs: row[6] as number,
+    source: (row[7] as string | null) || "active_window",
+    confidence: (row[8] as number | null) ?? 0.4,
+    synced: row[9] as number,
   }));
 }
 
@@ -168,31 +221,82 @@ export function getTodayStats(): { totalSecs: number; appName: string | null } {
 }
 
 export function getApiKey(): string | null {
-  const result = getDb().exec(
-    "SELECT value FROM config WHERE key = 'apiKey'"
-  );
-  return result.length ? (result[0].values[0][0] as string) : null;
+  return getConfigValue("apiKey");
 }
 
 export function setApiKey(key: string) {
-  getDb().run(
-    "INSERT OR REPLACE INTO config (key, value) VALUES ('apiKey', ?)",
-    [key]
-  );
-  saveDb();
+  setConfigValue("apiKey", key);
 }
 
 export function getApiBaseUrl(): string {
-  const result = getDb().exec(
-    "SELECT value FROM config WHERE key = 'apiBaseUrl'"
-  );
-  return result.length ? (result[0].values[0][0] as string) : "http://localhost:3000";
+  return getConfigValue("apiBaseUrl") || "http://localhost:3000";
 }
 
 export function setApiBaseUrl(url: string) {
-  getDb().run(
-    "INSERT OR REPLACE INTO config (key, value) VALUES ('apiBaseUrl', ?)",
-    [url]
-  );
-  saveDb();
+  setConfigValue("apiBaseUrl", url);
+}
+
+export function getTrackingPaused(): boolean {
+  return getConfigValue("trackingPaused") === "true";
+}
+
+export function setTrackingPaused(paused: boolean) {
+  setConfigValue("trackingPaused", paused ? "true" : "false");
+}
+
+export function getRedactWindowTitles(): boolean {
+  return getConfigValue("redactWindowTitles") !== "false";
+}
+
+export function setRedactWindowTitles(redact: boolean) {
+  setConfigValue("redactWindowTitles", redact ? "true" : "false");
+}
+
+export function getExcludedApps(): string[] {
+  return readJsonList("excludedApps");
+}
+
+export function setExcludedApps(apps: string[]) {
+  setConfigValue("excludedApps", JSON.stringify(apps));
+}
+
+export function getCurrentProject(): string | null {
+  return getConfigValue("currentProject") || null;
+}
+
+export function setCurrentProject(projectName: string | null) {
+  if (projectName) {
+    setConfigValue("currentProject", projectName);
+  } else {
+    setConfigValue("currentProject", "");
+  }
+}
+
+export function getTrackerConfig() {
+  return {
+    trackingPaused: getTrackingPaused(),
+    redactWindowTitles: getRedactWindowTitles(),
+    excludedApps: getExcludedApps(),
+    currentProject: getCurrentProject(),
+  };
+}
+
+export function applyRemoteTrackerConfig(config: {
+  trackingPaused?: boolean;
+  redactWindowTitles?: boolean;
+  excludedApps?: string[];
+  currentProject?: string | null;
+}) {
+  if (typeof config.trackingPaused === "boolean") {
+    setTrackingPaused(config.trackingPaused);
+  }
+  if (typeof config.redactWindowTitles === "boolean") {
+    setRedactWindowTitles(config.redactWindowTitles);
+  }
+  if (Array.isArray(config.excludedApps)) {
+    setExcludedApps(config.excludedApps);
+  }
+  if ("currentProject" in config) {
+    setCurrentProject(config.currentProject || null);
+  }
 }

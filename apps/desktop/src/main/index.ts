@@ -8,7 +8,15 @@ import {
   screen,
 } from "electron";
 import path from "path";
-import { initDb, getApiKey, setApiKey, setApiBaseUrl, getTodayStats } from "./db";
+import {
+  getApiKey,
+  getTodayStats,
+  getTrackerConfig,
+  initDb,
+  setApiBaseUrl,
+  setApiKey,
+  setTrackingPaused,
+} from "./db";
 import { startTracking, stopTracking } from "./tracker";
 import { startSyncLoop, stopSyncLoop, syncSessions } from "./sync";
 import { startHeartbeat, stopHeartbeat } from "./heartbeat";
@@ -33,16 +41,16 @@ function createWidget() {
   const { width: screenW, height: screenH } = display.workAreaSize;
 
   widgetWindow = new BrowserWindow({
-    width: 180,
-    height: 85,
-    x: screenW - 200,
-    y: screenH - 105,
+    width: 300,
+    height: 148,
+    x: screenW - 280,
+    y: screenH - 168,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
     resizable: true,
-    minWidth: 140,
-    minHeight: 55,
+    minWidth: 260,
+    minHeight: 132,
     maxWidth: 500,
     maxHeight: 300,
     skipTaskbar: true,
@@ -73,8 +81,8 @@ function createWidget() {
 // ── Setup window (for API key entry) ───────────────────────────
 function createSetupWindow() {
   setupWindow = new BrowserWindow({
-    width: 380,
-    height: 320,
+    width: 460,
+    height: 430,
     frame: false,
     transparent: true,
     resizable: false,
@@ -206,9 +214,9 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on("window-all-closed", (e: Event) => {
-  if (!isQuitting) {
-    e.preventDefault();
+app.on("window-all-closed", () => {
+  if (isQuitting) {
+    app.quit();
   }
 });
 
@@ -229,10 +237,21 @@ ipcMain.handle("set-api-key", async (_, key: string) => {
   if (!widgetWindow) createWidget();
   startTracking();
   startSyncLoop();
+  startHeartbeat();
 });
 
 ipcMain.handle("set-api-url", (_, url: string) => setApiBaseUrl(url));
 ipcMain.handle("get-today-stats", () => getTodayStats());
+ipcMain.handle("get-tracker-config", () => getTrackerConfig());
+ipcMain.handle("set-tracking-paused", (_, paused: boolean) => {
+  setTrackingPaused(paused);
+  if (paused) {
+    stopTracking();
+  } else {
+    startTracking();
+  }
+  return getTrackerConfig();
+});
 ipcMain.handle("force-sync", () => syncSessions());
 
 ipcMain.handle("close-window", (event) => {

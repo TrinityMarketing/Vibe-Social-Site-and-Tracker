@@ -13,7 +13,14 @@ export async function GET(
   try {
     const user = await prisma.user.findUnique({
       where: { username: params.username },
-      select: { isPublic: true, lastSeenAt: true, currentApp: true, isLive: true },
+      select: {
+        isPublic: true,
+        lastSeenAt: true,
+        currentApp: true,
+        currentProject: true,
+        isLive: true,
+        showPresence: true,
+      },
     });
 
     if (!user || !user.isPublic) {
@@ -21,6 +28,7 @@ export async function GET(
     }
 
     const isLive =
+      user.showPresence &&
       user.isLive &&
       user.lastSeenAt !== null &&
       Date.now() - user.lastSeenAt.getTime() < STALE_THRESHOLD_MS;
@@ -28,6 +36,7 @@ export async function GET(
     const status: PresenceStatus = {
       isLive,
       currentApp: isLive ? user.currentApp : null,
+      currentProject: isLive ? user.currentProject : null,
       lastSeenAt: user.lastSeenAt?.toISOString() ?? null,
     };
 

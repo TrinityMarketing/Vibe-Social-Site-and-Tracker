@@ -16,6 +16,7 @@ const RESERVED_USERNAMES = [
   "support",
   "blog",
   "pricing",
+  "feed",
 ];
 
 export async function GET(req: Request) {
@@ -37,9 +38,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ available: false, error: "This username is reserved" });
   }
 
-  const existing = await prisma.user.findUnique({
-    where: { username: username.toLowerCase() },
-  });
+  try {
+    const existing = await prisma.user.findUnique({
+      where: { username: username.toLowerCase() },
+    });
 
-  return NextResponse.json({ available: !existing });
+    return NextResponse.json({ available: !existing });
+  } catch (error) {
+    console.error("Username check error:", error);
+    return NextResponse.json({
+      available: false,
+      error: "Database unavailable",
+    }, { status: 503 });
+  }
 }

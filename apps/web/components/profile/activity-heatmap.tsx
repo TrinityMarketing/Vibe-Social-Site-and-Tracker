@@ -14,18 +14,18 @@ interface Props {
 
 function getIntensity(secs: number): number {
   if (secs === 0) return 0;
-  if (secs < 1800) return 1;   // < 30min
-  if (secs < 7200) return 2;   // < 2h
-  if (secs < 18000) return 3;  // < 5h
-  return 4;                     // 5h+
+  if (secs < 1800) return 1;
+  if (secs < 7200) return 2;
+  if (secs < 18000) return 3;
+  return 4;
 }
 
 const COLORS = [
-  "bg-zinc-800/50",              // 0 — empty
-  "bg-emerald-900/60",           // 1
-  "bg-emerald-700/70",           // 2
-  "bg-emerald-500/80",           // 3
-  "bg-[#00ff88]",                // 4 — full neon
+  "bg-white/[0.035]",
+  "bg-emerald-950/80",
+  "bg-emerald-800/80",
+  "bg-emerald-500/80",
+  "bg-emerald-300",
 ];
 
 function formatHours(secs: number): string {
@@ -55,11 +55,10 @@ export function ActivityHeatmap({ username }: Props) {
 
   if (loading) {
     return (
-      <div className="h-[140px] animate-pulse rounded-lg bg-zinc-800/30" />
+      <div className="h-[140px] animate-pulse rounded-lg border border-white/10 bg-white/[0.035]" />
     );
   }
 
-  // Build 53-week grid (371 days) ending today
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -68,7 +67,6 @@ export function ActivityHeatmap({ username }: Props) {
     dayMap.set(d.date, d);
   }
 
-  // Start from the Sunday 52 weeks ago
   const start = new Date(today);
   start.setDate(start.getDate() - start.getDay() - 52 * 7);
 
@@ -90,7 +88,6 @@ export function ActivityHeatmap({ username }: Props) {
   }
   if (currentWeek.length > 0) weeks.push(currentWeek);
 
-  // Month labels
   const months: { label: string; col: number }[] = [];
   let lastMonth = -1;
   for (let w = 0; w < weeks.length; w++) {
@@ -99,7 +96,9 @@ export function ActivityHeatmap({ username }: Props) {
     const month = new Date(firstDay.date).getMonth();
     if (month !== lastMonth) {
       months.push({
-        label: new Date(firstDay.date).toLocaleDateString("en-US", { month: "short" }),
+        label: new Date(firstDay.date).toLocaleDateString("en-US", {
+          month: "short",
+        }),
         col: w,
       });
       lastMonth = month;
@@ -107,9 +106,11 @@ export function ActivityHeatmap({ username }: Props) {
   }
 
   return (
-    <div className="relative">
-      {/* Month labels */}
-      <div className="mb-1 flex text-[10px] text-muted-foreground" style={{ paddingLeft: 28 }}>
+    <div className="relative overflow-x-auto pb-2">
+      <div
+        className="mb-1 flex min-w-[770px] text-[10px] text-muted-foreground"
+        style={{ paddingLeft: 28 }}
+      >
         {months.map((m, i) => (
           <span
             key={i}
@@ -121,8 +122,7 @@ export function ActivityHeatmap({ username }: Props) {
         ))}
       </div>
 
-      <div className="mt-4 flex gap-0.5">
-        {/* Day labels */}
+      <div className="mt-4 flex min-w-[770px] gap-0.5">
         <div className="flex flex-col gap-0.5 pr-1 text-[10px] text-muted-foreground">
           <span className="h-[12px]" />
           <span className="flex h-[12px] items-center">Mon</span>
@@ -133,7 +133,6 @@ export function ActivityHeatmap({ username }: Props) {
           <span className="h-[12px]" />
         </div>
 
-        {/* Grid */}
         {weeks.map((week, wi) => (
           <div key={wi} className="flex flex-col gap-0.5">
             {Array.from({ length: 7 }).map((_, di) => {
@@ -147,7 +146,11 @@ export function ActivityHeatmap({ username }: Props) {
                   className={`h-[12px] w-[12px] rounded-[2px] ${COLORS[intensity]} transition-colors`}
                   onMouseEnter={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
-                    setTooltip({ day, x: rect.left + rect.width / 2, y: rect.top });
+                    setTooltip({
+                      day,
+                      x: rect.left + rect.width / 2,
+                      y: rect.top,
+                    });
                   }}
                   onMouseLeave={() => setTooltip(null)}
                 />
@@ -157,8 +160,7 @@ export function ActivityHeatmap({ username }: Props) {
         ))}
       </div>
 
-      {/* Legend */}
-      <div className="mt-2 flex items-center justify-end gap-1 text-[10px] text-muted-foreground">
+      <div className="mt-2 flex min-w-[770px] items-center justify-end gap-1 text-[10px] text-muted-foreground">
         <span>Less</span>
         {COLORS.map((c, i) => (
           <div key={i} className={`h-[10px] w-[10px] rounded-[2px] ${c}`} />
@@ -166,10 +168,9 @@ export function ActivityHeatmap({ username }: Props) {
         <span>More</span>
       </div>
 
-      {/* Tooltip */}
       {tooltip && (
         <div
-          className="pointer-events-none fixed z-50 rounded-md border border-border bg-popover px-2 py-1 text-xs shadow-md"
+          className="pointer-events-none fixed z-50 rounded-md border border-white/10 bg-popover px-2 py-1 text-xs shadow-md"
           style={{
             left: tooltip.x,
             top: tooltip.y - 36,
@@ -180,7 +181,7 @@ export function ActivityHeatmap({ username }: Props) {
           {tooltip.day.topApp && (
             <span className="text-muted-foreground"> in {tooltip.day.topApp}</span>
           )}
-          <span className="text-muted-foreground"> — {tooltip.day.date}</span>
+          <span className="text-muted-foreground"> - {tooltip.day.date}</span>
         </div>
       )}
     </div>

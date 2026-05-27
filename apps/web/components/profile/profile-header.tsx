@@ -1,5 +1,5 @@
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { BadgeCheck, ExternalLink, Github, Globe2, Twitter } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
   builder: "Builder",
@@ -8,9 +8,9 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_COLORS: Record<string, string> = {
-  builder: "bg-neon/20 text-neon border-neon/30",
-  engineer: "bg-indigo/20 text-indigo border-indigo/30",
-  ai_expert: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+  builder: "vc-chip vc-chip-mint",
+  engineer: "vc-chip vc-chip-sky",
+  ai_expert: "vc-chip vc-chip-amber",
 };
 
 interface ProfileHeaderProps {
@@ -35,30 +35,36 @@ export function ProfileHeader({
   websiteUrl,
 }: ProfileHeaderProps) {
   return (
-    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-      <Avatar className="h-24 w-24 border-2 border-border">
+    <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+      <Avatar className="h-24 w-24 border border-white/15 bg-white/[0.04]">
         <AvatarImage src={avatarUrl || undefined} alt={displayName} />
         <AvatarFallback className="bg-muted text-2xl">
           {displayName.charAt(0).toUpperCase()}
         </AvatarFallback>
       </Avatar>
 
-      <div className="text-center sm:text-left">
-        <h1 className="text-2xl font-bold text-foreground">{displayName}</h1>
-        <p className="font-mono text-muted-foreground">@{username}</p>
-        <Badge className={`mt-2 ${ROLE_COLORS[role] || ""}`}>
-          {ROLE_LABELS[role] || role}
-        </Badge>
-        {bio && <p className="mt-3 max-w-md text-muted-foreground">{bio}</p>}
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-mono text-3xl font-bold tracking-normal text-foreground">
+            {displayName}
+          </h1>
+          <span className={ROLE_COLORS[role] || "vc-chip"}>
+            <BadgeCheck className="size-3.5" />
+            {ROLE_LABELS[role] || role}
+          </span>
+        </div>
+        <p className="mt-1 font-mono text-muted-foreground">@{username}</p>
+        {bio && <p className="mt-4 max-w-2xl leading-7 text-muted-foreground">{bio}</p>}
 
-        <div className="mt-3 flex gap-3">
+        <div className="mt-5 flex flex-wrap gap-2">
           {githubUrl && (
             <a
               href={githubUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-muted-foreground transition hover:text-foreground"
+              className="vc-chip transition hover:border-emerald-400/25 hover:text-foreground"
             >
+              <Github className="size-3.5" />
               GitHub
             </a>
           )}
@@ -67,8 +73,9 @@ export function ProfileHeader({
               href={twitterUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-muted-foreground transition hover:text-foreground"
+              className="vc-chip transition hover:border-emerald-400/25 hover:text-foreground"
             >
+              <Twitter className="size-3.5" />
               Twitter
             </a>
           )}
@@ -77,9 +84,11 @@ export function ProfileHeader({
               href={websiteUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-muted-foreground transition hover:text-foreground"
+              className="vc-chip transition hover:border-emerald-400/25 hover:text-foreground"
             >
+              <Globe2 className="size-3.5" />
               Website
+              <ExternalLink className="size-3.5" />
             </a>
           )}
         </div>

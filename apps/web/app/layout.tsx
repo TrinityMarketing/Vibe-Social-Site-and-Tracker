@@ -18,9 +18,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "VibeClock — Track Your Build Time",
+  title: "VibeClock - Proof-of-Build Profiles",
   description:
-    "The LinkedIn for vibe coders. Track your build time, showcase your grind, get hired.",
+    "A verified activity layer for AI-native builders, turning sessions, tools, and shipped work into public proof profiles.",
 };
 
 export default function RootLayout({

@@ -19,29 +19,29 @@ export function WeeklyChart({ data }: WeeklyChartProps) {
     <div className="h-64 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#262626" />
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
           <XAxis
             dataKey="day"
-            tick={{ fill: "#a3a3a3", fontSize: 12 }}
-            axisLine={{ stroke: "#262626" }}
+            tick={{ fill: "#9ca3af", fontSize: 12 }}
+            axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
             tickLine={false}
           />
           <YAxis
-            tick={{ fill: "#a3a3a3", fontSize: 12 }}
-            axisLine={{ stroke: "#262626" }}
+            tick={{ fill: "#9ca3af", fontSize: 12 }}
+            axisLine={{ stroke: "rgba(255,255,255,0.1)" }}
             tickLine={false}
             unit="h"
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: "#1a1a1a",
-              border: "1px solid #262626",
+              backgroundColor: "#071019",
+              border: "1px solid rgba(255,255,255,0.12)",
               borderRadius: "8px",
-              color: "#f5f5f5",
+              color: "#f8fafc",
             }}
             formatter={(value) => [`${value}h`, "Hours"]}
           />
-          <Bar dataKey="hours" fill="#00ff88" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="hours" fill="#6ee7b7" radius={[6, 6, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

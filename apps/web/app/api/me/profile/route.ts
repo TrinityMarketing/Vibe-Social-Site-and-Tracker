@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { asStringArray, normalizeList } from "@/lib/privacy";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -16,6 +17,13 @@ export async function GET() {
       twitterUrl: user.twitterUrl || "",
       websiteUrl: user.websiteUrl || "",
       isPublic: user.isPublic,
+      showPresence: user.showPresence,
+      trackingPaused: user.trackingPaused,
+      redactWindowTitles: user.redactWindowTitles,
+      excludedApps: asStringArray(user.excludedApps),
+      hiddenApps: asStringArray(user.hiddenApps),
+      privateProjects: asStringArray(user.privateProjects),
+      currentProject: user.currentProject || "",
       apiKey: user.apiKey,
     });
   } catch (error) {
@@ -32,7 +40,21 @@ export async function PATCH(req: Request) {
     }
 
     const body = await req.json();
-    const { displayName, bio, githubUrl, twitterUrl, websiteUrl, isPublic } = body;
+    const {
+      displayName,
+      bio,
+      githubUrl,
+      twitterUrl,
+      websiteUrl,
+      isPublic,
+      showPresence,
+      trackingPaused,
+      redactWindowTitles,
+      excludedApps,
+      hiddenApps,
+      privateProjects,
+      currentProject,
+    } = body;
 
     const updated = await prisma.user.update({
       where: { id: user.id },
@@ -43,6 +65,22 @@ export async function PATCH(req: Request) {
         ...(twitterUrl !== undefined && { twitterUrl: twitterUrl || null }),
         ...(websiteUrl !== undefined && { websiteUrl: websiteUrl || null }),
         ...(isPublic !== undefined && { isPublic }),
+        ...(showPresence !== undefined && { showPresence }),
+        ...(trackingPaused !== undefined && { trackingPaused }),
+        ...(redactWindowTitles !== undefined && { redactWindowTitles }),
+        ...(excludedApps !== undefined && {
+          excludedApps: normalizeList(excludedApps),
+        }),
+        ...(hiddenApps !== undefined && { hiddenApps: normalizeList(hiddenApps) }),
+        ...(privateProjects !== undefined && {
+          privateProjects: normalizeList(privateProjects),
+        }),
+        ...(currentProject !== undefined && {
+          currentProject: currentProject || null,
+        }),
+        ...((trackingPaused === true || showPresence === false) && {
+          isLive: false,
+        }),
       },
     });
 
@@ -53,6 +91,13 @@ export async function PATCH(req: Request) {
       twitterUrl: updated.twitterUrl || "",
       websiteUrl: updated.websiteUrl || "",
       isPublic: updated.isPublic,
+      showPresence: updated.showPresence,
+      trackingPaused: updated.trackingPaused,
+      redactWindowTitles: updated.redactWindowTitles,
+      excludedApps: asStringArray(updated.excludedApps),
+      hiddenApps: asStringArray(updated.hiddenApps),
+      privateProjects: asStringArray(updated.privateProjects),
+      currentProject: updated.currentProject || "",
       apiKey: updated.apiKey,
     });
   } catch (error) {

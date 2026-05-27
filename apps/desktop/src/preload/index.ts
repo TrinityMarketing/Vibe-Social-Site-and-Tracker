@@ -5,6 +5,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   setApiKey: (key: string) => ipcRenderer.invoke("set-api-key", key),
   setApiUrl: (url: string) => ipcRenderer.invoke("set-api-url", url),
   getTodayStats: () => ipcRenderer.invoke("get-today-stats"),
+  getTrackerConfig: () => ipcRenderer.invoke("get-tracker-config"),
+  setTrackingPaused: (paused: boolean) =>
+    ipcRenderer.invoke("set-tracking-paused", paused),
   forceSync: () => ipcRenderer.invoke("force-sync"),
   onTrackerUpdate: (callback: (data: any) => void) => {
     ipcRenderer.on("tracker:update", (_, data) => callback(data));

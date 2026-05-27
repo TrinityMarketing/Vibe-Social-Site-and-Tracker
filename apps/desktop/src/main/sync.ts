@@ -1,4 +1,10 @@
-import { getUnsyncedSessions, markSynced, getApiKey, getApiBaseUrl } from "./db";
+import {
+  applyRemoteTrackerConfig,
+  getApiBaseUrl,
+  getApiKey,
+  getUnsyncedSessions,
+  markSynced,
+} from "./db";
 
 const SYNC_INTERVAL_MS = 30_000; // Sync every 30 seconds
 
@@ -10,6 +16,8 @@ export async function syncSessions() {
     console.log("No API key configured, skipping sync");
     return;
   }
+
+  await syncTrackerConfig(apiKey);
 
   const sessions = getUnsyncedSessions();
   if (sessions.length === 0) return;
@@ -27,9 +35,12 @@ export async function syncSessions() {
         sessions: sessions.map((s) => ({
           appName: s.appName,
           windowTitle: s.windowTitle,
+          projectName: s.projectName,
           startTime: s.startTime,
           endTime: s.endTime,
           durationSecs: s.durationSecs,
+          source: s.source,
+          confidence: s.confidence,
         })),
       }),
     });
@@ -48,6 +59,25 @@ export async function syncSessions() {
     }
   } catch (err) {
     console.error("Sync error:", err);
+  }
+}
+
+async function syncTrackerConfig(apiKey: string) {
+  const baseUrl = getApiBaseUrl();
+
+  try {
+    const response = await fetch(`${baseUrl}/api/me/tracker-config`, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+    });
+
+    if (!response.ok) return;
+
+    const config = await response.json();
+    applyRemoteTrackerConfig(config);
+  } catch {
+    // Config sync is best-effort.
   }
 }
 

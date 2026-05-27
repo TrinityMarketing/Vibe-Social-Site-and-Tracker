@@ -21,7 +21,10 @@ async function sendHeartbeat() {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ appName: session.appName }),
+      body: JSON.stringify({
+        appName: session.appName,
+        projectName: session.projectName,
+      }),
     });
   } catch {
     // Silently ignore — presence is best-effort

@@ -23,12 +23,20 @@ model User {
   isPublic    Boolean  @default(true)
   lastSeenAt  DateTime?
   currentApp  String?
+  currentProject String?
   isLive      Boolean  @default(false)
+  showPresence Boolean @default(true)
+  trackingPaused Boolean @default(false)
+  redactWindowTitles Boolean @default(true)
+  excludedApps Json @default("[]")
+  hiddenApps Json @default("[]")
+  privateProjects Json @default("[]")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   sessions   Session[]
   dailyStats DailyStat[]
+  proofs     ProofObject[]
   follows    Follow[]  @relation("follower")
   followers  Follow[]  @relation("following")
 
@@ -41,15 +49,22 @@ model Session {
   user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   appName      String
   windowTitle  String?
+  projectName  String?
   startTime    DateTime
   endTime      DateTime?
   durationSecs Int       @default(0)
+  source       String    @default("active_window")
+  confidence   Float     @default(0.4)
   isActive     Boolean   @default(false)
   date         DateTime  @default(now()) @db.Date
   createdAt    DateTime  @default(now())
+  proofId      String?
+  proof        ProofObject? @relation(fields: [proofId], references: [id], onDelete: SetNull)
 
   @@index([userId, date])
   @@index([userId, createdAt])
+  @@index([userId, source])
+  @@index([proofId])
 }
 
 model DailyStat {
@@ -77,4 +92,31 @@ model Follow {
 
   @@unique([followerId, followingId])
   @@index([followingId])
+}
+
+model ProofObject {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title          String
+  projectName    String?
+  kind           String    @default("build_note")
+  summary        String?
+  note           String?
+  repoUrl        String?
+  pullRequestUrl String?
+  deploymentUrl  String?
+  demoUrl        String?
+  screenshotUrl  String?
+  changelogUrl   String?
+  commitRange    String?
+  shippedAt      DateTime  @default(now())
+  isPublic       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  sessions       Session[]
+
+  @@index([userId, shippedAt])
+  @@index([isPublic, shippedAt])
 }

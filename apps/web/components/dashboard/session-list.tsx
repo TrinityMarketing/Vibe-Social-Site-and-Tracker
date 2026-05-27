@@ -1,11 +1,15 @@
 import { AppIcon } from "@/components/shared/app-icon";
+import { SessionDeleteButton } from "./session-delete-button";
 
 interface Session {
   id: string;
   appName: string;
+  projectName?: string | null;
   windowTitle: string | null;
   startTime: string;
   durationSecs: number;
+  source?: string;
+  confidence?: number;
 }
 
 function formatDuration(secs: number): string {
@@ -40,8 +44,14 @@ function formatDateLabel(iso: string): string {
   });
 }
 
-// Merge consecutive sessions of the same app within 15 minutes of each other
-// and filter out very short sessions (< 30s) to reduce noise
+function formatConfidence(confidence?: number): string {
+  if (confidence === undefined) return "observed";
+  if (confidence >= 0.9) return "verified";
+  if (confidence >= 0.7) return "strong signal";
+  if (confidence >= 0.5) return "activity signal";
+  return "observed";
+}
+
 function mergeSessions(sessions: Session[]): Session[] {
   if (sessions.length === 0) return [];
 
@@ -50,17 +60,22 @@ function mergeSessions(sessions: Session[]): Session[] {
 
   for (let i = 1; i < sessions.length; i++) {
     const s = sessions[i];
-    const gap = (new Date(current.startTime).getTime() - new Date(s.startTime).getTime()) / 1000;
+    const gap =
+      (new Date(current.startTime).getTime() - new Date(s.startTime).getTime()) /
+      1000;
 
-    // Same app and within 15 minutes — merge
     if (s.appName === current.appName && Math.abs(gap) < 900) {
-      const earlierStart = new Date(s.startTime) < new Date(current.startTime)
-        ? s.startTime : current.startTime;
+      const earlierStart =
+        new Date(s.startTime) < new Date(current.startTime)
+          ? s.startTime
+          : current.startTime;
       current = {
         ...current,
         startTime: earlierStart,
         durationSecs: current.durationSecs + s.durationSecs,
         windowTitle: current.windowTitle || s.windowTitle,
+        projectName: current.projectName || s.projectName,
+        confidence: Math.max(current.confidence || 0, s.confidence || 0),
       };
     } else {
       merged.push(current);
@@ -82,12 +97,20 @@ function groupByDate(sessions: Session[]) {
   return groups;
 }
 
-export function SessionList({ sessions }: { sessions: Session[] }) {
+export function SessionList({
+  sessions,
+  showDelete = false,
+}: {
+  sessions: Session[];
+  showDelete?: boolean;
+}) {
   if (sessions.length === 0) {
     return (
-      <div className="rounded-lg border border-border bg-card p-8 text-center">
-        <p className="text-muted-foreground">No sessions yet.</p>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <div className="rounded-lg border border-white/10 bg-white/[0.035] p-8 text-center">
+        <p className="font-mono text-lg font-semibold text-foreground">
+          No sessions yet.
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground">
           Download the desktop app to start tracking.
         </p>
       </div>
@@ -105,17 +128,24 @@ export function SessionList({ sessions }: { sessions: Session[] }) {
           <div key={date}>
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-medium text-muted-foreground">{date}</h3>
-              <span className="font-mono text-xs text-neon">{formatDuration(dayTotal)}</span>
+              <span className="font-mono text-xs text-emerald-200">
+                {formatDuration(dayTotal)}
+              </span>
             </div>
             <div className="space-y-2">
               {dateSessions.map((session) => (
                 <div
                   key={session.id}
-                  className="flex items-center gap-3 rounded-lg border border-border bg-card p-3"
+                  className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.035] p-3 transition hover:border-emerald-400/20 hover:bg-white/[0.055]"
                 >
                   <AppIcon appName={session.appName} />
-                  <div className="flex-1 min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-foreground">{session.appName}</p>
+                    {session.projectName && (
+                      <p className="truncate text-sm text-sky-400">
+                        {session.projectName}
+                      </p>
+                    )}
                     {session.windowTitle && (
                       <p className="truncate text-sm text-muted-foreground">
                         {session.windowTitle}
@@ -123,13 +153,17 @@ export function SessionList({ sessions }: { sessions: Session[] }) {
                     )}
                   </div>
                   <div className="text-right">
-                    <p className="font-mono text-sm text-neon">
+                    <p className="font-mono text-sm text-emerald-200">
                       {formatDuration(session.durationSecs)}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {formatTime(session.startTime)}
                     </p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {formatConfidence(session.confidence)}
+                    </p>
                   </div>
+                  {showDelete && <SessionDeleteButton sessionId={session.id} />}
                 </div>
               ))}
             </div>

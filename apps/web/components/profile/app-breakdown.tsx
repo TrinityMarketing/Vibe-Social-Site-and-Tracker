@@ -2,7 +2,7 @@
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 
-const COLORS = ["#00ff88", "#6366f1", "#0ea5e9", "#f59e0b", "#ec4899"];
+const COLORS = ["#6ee7b7", "#38bdf8", "#fbbf24", "#a78bfa", "#fb7185"];
 
 interface AppBreakdownProps {
   data: { appName: string; totalHours: number; suffix?: string }[];
@@ -37,10 +37,10 @@ export function AppBreakdown({ data }: AppBreakdownProps) {
             </Pie>
             <Tooltip
               contentStyle={{
-                backgroundColor: "#1a1a1a",
-                border: "1px solid #262626",
+                backgroundColor: "#071019",
+                border: "1px solid rgba(255,255,255,0.12)",
                 borderRadius: "8px",
-                color: "#f5f5f5",
+                color: "#f8fafc",
               }}
               formatter={(value) => [`${value}h`, "Hours"]}
             />

@@ -48,7 +48,12 @@ export async function updateDailyRollup(userId: string, date: Date) {
     _sum: { durationSecs: true },
   });
 
-  if (grouped.length === 0) return;
+  if (grouped.length === 0) {
+    await prisma.dailyStat.deleteMany({
+      where: { userId, date },
+    });
+    return;
+  }
 
   const appBreakdown: Record<string, number> = {};
   let topApp: string | null = null;

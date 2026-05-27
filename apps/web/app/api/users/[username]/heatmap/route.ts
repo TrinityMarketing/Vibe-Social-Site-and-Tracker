@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { isPublicSession } from "@/lib/privacy";
 import { NextResponse } from "next/server";
 import type { HeatmapResponse } from "@vibeclock/shared";
 
@@ -11,7 +12,6 @@ export async function GET(
   try {
     const user = await prisma.user.findUnique({
       where: { username: params.username },
-      select: { id: true, isPublic: true },
     });
 
     if (!user || !user.isPublic) {
@@ -21,18 +21,39 @@ export async function GET(
     const yearAgo = new Date();
     yearAgo.setFullYear(yearAgo.getFullYear() - 1);
 
-    const stats = await prisma.dailyStat.findMany({
+    const sessions = await prisma.session.findMany({
       where: { userId: user.id, date: { gte: yearAgo } },
       orderBy: { date: "asc" },
-      select: { date: true, totalSecs: true, topApp: true },
+      select: {
+        appName: true,
+        projectName: true,
+        windowTitle: true,
+        date: true,
+        durationSecs: true,
+      },
     });
 
+    const dayMap = new Map<string, { totalSecs: number; appTotals: Map<string, number> }>();
+    for (const session of sessions.filter((s) => isPublicSession(s, user))) {
+      const key = session.date.toISOString().split("T")[0];
+      const entry = dayMap.get(key) || { totalSecs: 0, appTotals: new Map<string, number>() };
+      entry.totalSecs += session.durationSecs;
+      entry.appTotals.set(
+        session.appName,
+        (entry.appTotals.get(session.appName) || 0) + session.durationSecs
+      );
+      dayMap.set(key, entry);
+    }
+
     const response: HeatmapResponse = {
-      days: stats.map((s) => ({
-        date: s.date.toISOString().split("T")[0],
-        totalSecs: s.totalSecs,
-        topApp: s.topApp,
-      })),
+      days: Array.from(dayMap.entries())
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([date, entry]) => {
+          const topApp =
+            Array.from(entry.appTotals.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+            null;
+          return { date, totalSecs: entry.totalSecs, topApp };
+        }),
     };
 
     return NextResponse.json(response, {

@@ -19,13 +19,15 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     const appName = body.appName || null;
+    const projectName = body.projectName || user.currentProject || null;
 
     await prisma.user.update({
       where: { id: user.id },
       data: {
         lastSeenAt: new Date(),
         currentApp: appName,
-        isLive: true,
+        currentProject: projectName,
+        isLive: user.showPresence && !user.trackingPaused,
       },
     });
 
